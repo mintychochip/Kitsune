@@ -194,7 +194,7 @@ public class SqliteVectorStorage implements VectorStorage {
                                 float[] storedEmbedding = deserializeEmbedding(rs.getBytes("embedding"));
                                 double similarity = cosineSimilarity(embedding, storedEmbedding);
 
-                                LocationData loc = new LocationData(
+                                LocationData loc = LocationData.of(
                                     rs.getString("world"),
                                     rs.getInt("x"),
                                     rs.getInt("y"),

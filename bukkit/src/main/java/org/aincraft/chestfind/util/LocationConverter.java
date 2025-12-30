@@ -29,7 +29,7 @@ public final class LocationConverter {
         if (world == null) {
             throw new IllegalArgumentException("Location's world cannot be null");
         }
-        return new LocationData(
+        return LocationData.of(
             world.getName(),
             location.getBlockX(),
             location.getBlockY(),

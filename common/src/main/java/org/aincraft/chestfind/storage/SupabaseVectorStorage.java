@@ -208,7 +208,7 @@ public class SupabaseVectorStorage implements VectorStorage {
                             double distance = rs.getDouble("distance");
                             double similarity = Math.max(0.0, 1 - distance);
 
-                            LocationData loc = new LocationData(
+                            LocationData loc = LocationData.of(
                                 rs.getString("world"),
                                 rs.getInt("x"),
                                 rs.getInt("y"),

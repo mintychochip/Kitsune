@@ -1,23 +1,72 @@
 package org.aincraft.chestfind.api;
 
+import java.util.Objects;
+
 /**
  * Platform-agnostic location data for containers.
- * This record represents a world location without Bukkit dependencies.
+ * This class represents a world location without Bukkit dependencies.
+ * Instances are created via factory methods for consistent validation.
  */
-public record LocationData(
-    String worldName,
-    int blockX,
-    int blockY,
-    int blockZ
-) {
+public final class LocationData {
+    private final String worldName;
+    private final int blockX;
+    private final int blockY;
+    private final int blockZ;
+
     /**
-     * Creates a new LocationData instance.
-     * @throws IllegalArgumentException if worldName is null or blank
+     * Private constructor for creating LocationData instances.
+     * Use factory methods like {@link #of(String, int, int, int)} instead.
      */
-    public LocationData {
+    private LocationData(String worldName, int blockX, int blockY, int blockZ) {
         if (worldName == null || worldName.isBlank()) {
             throw new IllegalArgumentException("World name cannot be null or blank");
         }
+        this.worldName = worldName;
+        this.blockX = blockX;
+        this.blockY = blockY;
+        this.blockZ = blockZ;
+    }
+
+    /**
+     * Factory method to create a LocationData instance.
+     *
+     * @param worldName the name of the world
+     * @param blockX    the X coordinate
+     * @param blockY    the Y coordinate
+     * @param blockZ    the Z coordinate
+     * @return a new LocationData instance
+     * @throws IllegalArgumentException if worldName is null or blank
+     */
+    public static LocationData of(String worldName, int blockX, int blockY, int blockZ) {
+        return new LocationData(worldName, blockX, blockY, blockZ);
+    }
+
+    /**
+     * Returns the world name.
+     */
+    public String worldName() {
+        return worldName;
+    }
+
+    /**
+     * Returns the X coordinate.
+     */
+    public int blockX() {
+        return blockX;
+    }
+
+    /**
+     * Returns the Y coordinate.
+     */
+    public int blockY() {
+        return blockY;
+    }
+
+    /**
+     * Returns the Z coordinate.
+     */
+    public int blockZ() {
+        return blockZ;
     }
 
     /**
@@ -33,5 +82,24 @@ public record LocationData(
      */
     public String getCoordinates() {
         return String.format("(%d, %d, %d)", blockX, blockY, blockZ);
+    }
+
+    /**
+     * Compares this LocationData with another object.
+     */
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof LocationData that)) return false;
+        return blockX == that.blockX && blockY == that.blockY && blockZ == that.blockZ &&
+               Objects.equals(worldName, that.worldName);
+    }
+
+    /**
+     * Returns a hash code for this LocationData.
+     */
+    @Override
+    public int hashCode() {
+        return Objects.hash(worldName, blockX, blockY, blockZ);
     }
 }
