@@ -6,9 +6,9 @@ package org.aincraft.chestfind.api;
  */
 public record LocationData(
     String worldName,
-    int x,
-    int y,
-    int z
+    int blockX,
+    int blockY,
+    int blockZ
 ) {
     /**
      * Creates a new LocationData instance.
@@ -25,13 +25,13 @@ public record LocationData(
      */
     @Override
     public String toString() {
-        return String.format("%s:%d,%d,%d", worldName, x, y, z);
+        return String.format("%s:%d,%d,%d", worldName, blockX, blockY, blockZ);
     }
 
     /**
      * Returns a formatted coordinate string.
      */
     public String getCoordinates() {
-        return String.format("(%d, %d, %d)", x, y, z);
+        return String.format("(%d, %d, %d)", blockX, blockY, blockZ);
     }
 }

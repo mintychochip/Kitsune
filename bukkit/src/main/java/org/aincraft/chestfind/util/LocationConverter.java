@@ -51,7 +51,7 @@ public final class LocationConverter {
         if (world == null) {
             return null; // World not loaded
         }
-        return new Location(world, data.x(), data.y(), data.z());
+        return new Location(world, data.blockX(), data.blockY(), data.blockZ());
     }
 
     /**
@@ -68,6 +68,6 @@ public final class LocationConverter {
         if (world == null) {
             return null; // World not loaded
         }
-        return new Location(world, data.x() + 0.5, data.y() + 0.5, data.z() + 0.5);
+        return new Location(world, data.blockX() + 0.5, data.blockY() + 0.5, data.blockZ() + 0.5);
     }
 }

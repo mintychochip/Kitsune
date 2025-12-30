@@ -118,9 +118,9 @@ public class SupabaseVectorStorage implements VectorStorage {
 
                 try (PreparedStatement stmt = conn.prepareStatement(sql)) {
                     stmt.setString(1, document.location().worldName());
-                    stmt.setInt(2, document.location().x());
-                    stmt.setInt(3, document.location().y());
-                    stmt.setInt(4, document.location().z());
+                    stmt.setInt(2, document.location().blockX());
+                    stmt.setInt(3, document.location().blockY());
+                    stmt.setInt(4, document.location().blockZ());
                     stmt.setString(5, document.contentText());
                     stmt.setString(6, embeddingToString(document.embedding()));
                     stmt.setLong(7, document.timestamp());
@@ -146,9 +146,9 @@ public class SupabaseVectorStorage implements VectorStorage {
                 String deleteSql = "DELETE FROM %s WHERE world = ? AND x = ? AND y = ? AND z = ?".formatted(tableName);
                 try (PreparedStatement stmt = conn.prepareStatement(deleteSql)) {
                     stmt.setString(1, loc.worldName());
-                    stmt.setInt(2, loc.x());
-                    stmt.setInt(3, loc.y());
-                    stmt.setInt(4, loc.z());
+                    stmt.setInt(2, loc.blockX());
+                    stmt.setInt(3, loc.blockY());
+                    stmt.setInt(4, loc.blockZ());
                     stmt.executeUpdate();
                 }
 
@@ -161,9 +161,9 @@ public class SupabaseVectorStorage implements VectorStorage {
                 try (PreparedStatement stmt = conn.prepareStatement(insertSql)) {
                     for (ContainerChunk chunk : chunks) {
                         stmt.setString(1, chunk.location().worldName());
-                        stmt.setInt(2, chunk.location().x());
-                        stmt.setInt(3, chunk.location().y());
-                        stmt.setInt(4, chunk.location().z());
+                        stmt.setInt(2, chunk.location().blockX());
+                        stmt.setInt(3, chunk.location().blockY());
+                        stmt.setInt(4, chunk.location().blockZ());
                         stmt.setInt(5, chunk.chunkIndex());
                         stmt.setString(6, chunk.contentText());
                         stmt.setString(7, embeddingToString(chunk.embedding()));
@@ -264,9 +264,9 @@ public class SupabaseVectorStorage implements VectorStorage {
 
                 try (PreparedStatement stmt = conn.prepareStatement(sql)) {
                     stmt.setString(1, location.worldName());
-                    stmt.setInt(2, location.x());
-                    stmt.setInt(3, location.y());
-                    stmt.setInt(4, location.z());
+                    stmt.setInt(2, location.blockX());
+                    stmt.setInt(3, location.blockY());
+                    stmt.setInt(4, location.blockZ());
                     stmt.executeUpdate();
                 }
             } catch (SQLException e) {
