@@ -1,5 +1,6 @@
 package org.aincraft.chestfind.api;
 
+import com.google.common.base.Preconditions;
 import java.util.Objects;
 
 /**
@@ -18,9 +19,6 @@ public final class LocationData {
      * Use factory methods like {@link #of(String, int, int, int)} instead.
      */
     private LocationData(String worldName, int blockX, int blockY, int blockZ) {
-        if (worldName == null || worldName.isBlank()) {
-            throw new IllegalArgumentException("World name cannot be null or blank");
-        }
         this.worldName = worldName;
         this.blockX = blockX;
         this.blockY = blockY;
@@ -35,9 +33,12 @@ public final class LocationData {
      * @param blockY    the Y coordinate
      * @param blockZ    the Z coordinate
      * @return a new LocationData instance
-     * @throws IllegalArgumentException if worldName is null or blank
+     * @throws NullPointerException if worldName is null
+     * @throws IllegalArgumentException if worldName is blank
      */
     public static LocationData of(String worldName, int blockX, int blockY, int blockZ) {
+        Preconditions.checkNotNull(worldName, "World name cannot be null");
+        Preconditions.checkArgument(!worldName.isBlank(), "World name cannot be blank");
         return new LocationData(worldName, blockX, blockY, blockZ);
     }
 

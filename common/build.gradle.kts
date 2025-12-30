@@ -3,6 +3,9 @@ plugins {
 }
 
 dependencies {
+    // Google Guava for Preconditions
+    api("com.google.guava:guava:33.0.0-jre")
+
     // ONNX Runtime for local embeddings
     api("com.microsoft.onnxruntime:onnxruntime:1.19.2")
 
