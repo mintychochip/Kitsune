@@ -1,0 +1,63 @@
+# ChestFind Configuration
+
+# Embedding Service Configuration
+embedding:
+  # Provider: "onnx" (local), "openai", or "google"
+  provider: "google"
+
+  # OpenAI settings (only used if provider is "openai")
+  openai:
+    api-key: ""
+    model: "text-embedding-3-small"
+
+  # Google AI settings (only used if provider is "google")
+  # Get API key from: https://aistudio.google.com/app/apikey
+  google:
+    api-key: ""
+    # Models: gemini-embedding-001 (stable), text-embedding-004 (newer, better)
+    model: "text-embedding-004"
+
+  # Embedding dimension (ONNX all-MiniLM-L6-v2: 384, OpenAI: varies, Google: 768)
+  dimension: 768
+
+# Storage Configuration
+storage:
+  # Provider: "sqlite" (local, recommended) or "supabase"
+  provider: "sqlite"
+
+  # SQLite settings
+  sqlite:
+    path: "chestfind.db"
+
+  # Supabase settings (only used if provider is "supabase")
+  supabase:
+    url: ""
+    key: ""
+    table: "containers"
+
+# Indexing Configuration
+indexing:
+  # Debounce delay in milliseconds (prevents rapid re-indexing)
+  debounce-delay-ms: 2000
+
+  # Enable/disable hopper transfer indexing
+  hopper-transfers: true
+
+  # Enable/disable hopper minecart deposit indexing
+  hopper-minecart-deposits: true
+
+# Search Configuration
+search:
+  # Default number of results per search
+  default-limit: 10
+
+  # Maximum number of results per search
+  max-limit: 50
+
+# Protection Plugin Integration
+protection:
+  # Enable protection checks
+  enabled: true
+
+  # Plugin: "auto" (auto-detect), "lockette", "bolt", or "none"
+  plugin: "auto"

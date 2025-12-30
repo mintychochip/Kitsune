@@ -1,0 +1,335 @@
+package org.aincraft.chestfind.storage;
+
+import com.zaxxer.hikari.HikariConfig;
+import com.zaxxer.hikari.HikariDataSource;
+import org.aincraft.chestfind.model.ContainerChunk;
+import org.aincraft.chestfind.model.ContainerDocument;
+import org.aincraft.chestfind.model.SearchResult;
+import org.aincraft.chestfind.model.StorageStats;
+import org.bukkit.Location;
+import org.bukkit.plugin.java.JavaPlugin;
+
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.logging.Level;
+
+public class SqliteVectorStorage implements VectorStorage {
+    private final JavaPlugin plugin;
+    private final String dbPath;
+    private final ScheduledExecutorService executor = Executors.newScheduledThreadPool(4);
+    private HikariDataSource dataSource;
+
+    public SqliteVectorStorage(JavaPlugin plugin, String dbPath) {
+        this.plugin = plugin;
+        this.dbPath = dbPath;
+    }
+
+    @Override
+    public CompletableFuture<Void> initialize() {
+        return CompletableFuture.runAsync(() -> {
+            try {
+                // Load SQLite driver from Paper's bundled version
+                try {
+                    Class.forName("org.sqlite.JDBC");
+                } catch (ClassNotFoundException e) {
+                    plugin.getLogger().warning("SQLite driver not found in classpath");
+                }
+
+                Path dbFile = Paths.get(plugin.getDataFolder().getAbsolutePath(), dbPath);
+                Files.createDirectories(dbFile.getParent());
+
+                HikariConfig config = new HikariConfig();
+                config.setJdbcUrl("jdbc:sqlite:" + dbFile.toAbsolutePath());
+                config.setDriverClassName("org.sqlite.JDBC");
+                config.setMaximumPoolSize(1); // SQLite only supports one writer
+                config.setLeakDetectionThreshold(30000);
+
+                dataSource = new HikariDataSource(config);
+
+                try (Connection conn = dataSource.getConnection()) {
+                    conn.createStatement().execute("""
+                        CREATE TABLE IF NOT EXISTS containers (
+                            world TEXT NOT NULL,
+                            x INTEGER NOT NULL,
+                            y INTEGER NOT NULL,
+                            z INTEGER NOT NULL,
+                            chunk_index INTEGER NOT NULL DEFAULT 0,
+                            content_text TEXT NOT NULL,
+                            embedding BLOB NOT NULL,
+                            timestamp INTEGER NOT NULL,
+                            PRIMARY KEY (world, x, y, z, chunk_index)
+                        )
+                        """);
+                    conn.createStatement().execute("CREATE INDEX IF NOT EXISTS idx_timestamp ON containers(timestamp)");
+                    conn.createStatement().execute("CREATE INDEX IF NOT EXISTS idx_location ON containers(world, x, y, z)");
+                }
+
+                plugin.getLogger().info("SQLite storage initialized at " + dbFile.toAbsolutePath());
+            } catch (Exception e) {
+                plugin.getLogger().log(Level.SEVERE, "Failed to initialize SQLite storage", e);
+                throw new RuntimeException("SQLite initialization failed", e);
+            }
+        }, executor);
+    }
+
+    @Override
+    @Deprecated
+    public CompletableFuture<Void> index(ContainerDocument document) {
+        return CompletableFuture.runAsync(() -> {
+            try (Connection conn = dataSource.getConnection()) {
+                String sql = """
+                    INSERT OR REPLACE INTO containers
+                    (world, x, y, z, chunk_index, content_text, embedding, timestamp)
+                    VALUES (?, ?, ?, ?, 0, ?, ?, ?)
+                    """;
+
+                try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                    stmt.setString(1, document.location().getWorld().getName());
+                    stmt.setInt(2, document.location().getBlockX());
+                    stmt.setInt(3, document.location().getBlockY());
+                    stmt.setInt(4, document.location().getBlockZ());
+                    stmt.setString(5, document.contentText());
+                    try {
+                        stmt.setBytes(6, serializeEmbedding(document.embedding()));
+                    } catch (Exception e) {
+                        throw new SQLException("Failed to serialize embedding", e);
+                    }
+                    stmt.setLong(7, document.timestamp());
+                    stmt.executeUpdate();
+                }
+            } catch (SQLException e) {
+                plugin.getLogger().log(Level.WARNING, "Failed to index container", e);
+                throw new RuntimeException("Indexing failed", e);
+            }
+        }, executor);
+    }
+
+    @Override
+    public CompletableFuture<Void> indexChunks(List<ContainerChunk> chunks) {
+        if (chunks.isEmpty()) {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        return CompletableFuture.runAsync(() -> {
+            try (Connection conn = dataSource.getConnection()) {
+                // Delete all existing chunks for this location first
+                Location loc = chunks.get(0).location();
+                String deleteSql = "DELETE FROM containers WHERE world = ? AND x = ? AND y = ? AND z = ?";
+                try (PreparedStatement stmt = conn.prepareStatement(deleteSql)) {
+                    stmt.setString(1, loc.getWorld().getName());
+                    stmt.setInt(2, loc.getBlockX());
+                    stmt.setInt(3, loc.getBlockY());
+                    stmt.setInt(4, loc.getBlockZ());
+                    stmt.executeUpdate();
+                }
+
+                // Insert all chunks
+                String insertSql = """
+                    INSERT INTO containers
+                    (world, x, y, z, chunk_index, content_text, embedding, timestamp)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """;
+
+                try (PreparedStatement stmt = conn.prepareStatement(insertSql)) {
+                    for (ContainerChunk chunk : chunks) {
+                        stmt.setString(1, chunk.location().getWorld().getName());
+                        stmt.setInt(2, chunk.location().getBlockX());
+                        stmt.setInt(3, chunk.location().getBlockY());
+                        stmt.setInt(4, chunk.location().getBlockZ());
+                        stmt.setInt(5, chunk.chunkIndex());
+                        stmt.setString(6, chunk.contentText());
+                        try {
+                            stmt.setBytes(7, serializeEmbedding(chunk.embedding()));
+                        } catch (Exception e) {
+                            throw new SQLException("Failed to serialize embedding", e);
+                        }
+                        stmt.setLong(8, chunk.timestamp());
+                        stmt.addBatch();
+                    }
+                    stmt.executeBatch();
+                }
+            } catch (SQLException e) {
+                plugin.getLogger().log(Level.WARNING, "Failed to index chunks", e);
+                throw new RuntimeException("Chunk indexing failed", e);
+            }
+        }, executor);
+    }
+
+    @Override
+    public CompletableFuture<List<SearchResult>> search(float[] embedding, int limit, String world) {
+        return CompletableFuture.supplyAsync(() -> {
+            try (Connection conn = dataSource.getConnection()) {
+                String sql = """
+                    SELECT world, x, y, z, chunk_index, content_text, embedding
+                    FROM containers
+                    """ + (world != null ? "WHERE world = ? " : "") +
+                    "ORDER BY timestamp DESC LIMIT 10000";
+
+                // Map to track best match per location: locationKey -> SearchResult
+                java.util.Map<String, SearchResult> bestMatches = new java.util.HashMap<>();
+
+                try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                    if (world != null) {
+                        stmt.setString(1, world);
+                    }
+
+                    try (ResultSet rs = stmt.executeQuery()) {
+                        while (rs.next()) {
+                            try {
+                                float[] storedEmbedding = deserializeEmbedding(rs.getBytes("embedding"));
+                                double similarity = cosineSimilarity(embedding, storedEmbedding);
+
+                                Location loc = new Location(
+                                    plugin.getServer().getWorld(rs.getString("world")),
+                                    rs.getInt("x"),
+                                    rs.getInt("y"),
+                                    rs.getInt("z")
+                                );
+
+                                String fullContent = rs.getString("content_text");
+                                String preview = fullContent.length() > 100
+                                    ? fullContent.substring(0, 100) + "..."
+                                    : fullContent;
+
+                                // Log similarity score
+                                plugin.getLogger().info(String.format("Similarity %.2f%% for %s: %s",
+                                    similarity * 100, loc, preview));
+
+                                // Create unique key for this location
+                                String locationKey = String.format("%s:%d:%d:%d",
+                                    rs.getString("world"),
+                                    rs.getInt("x"),
+                                    rs.getInt("y"),
+                                    rs.getInt("z"));
+
+                                // Keep only the best matching chunk for each location
+                                SearchResult newResult = new SearchResult(loc, similarity, preview, fullContent);
+                                SearchResult existing = bestMatches.get(locationKey);
+
+                                if (existing == null || similarity > existing.score()) {
+                                    bestMatches.put(locationKey, newResult);
+                                }
+                            } catch (Exception e) {
+                                plugin.getLogger().log(Level.WARNING, "Failed to deserialize embedding", e);
+                            }
+                        }
+                    }
+                }
+
+                // Convert to list and sort by score
+                List<SearchResult> results = new ArrayList<>(bestMatches.values());
+                Collections.sort(results, (a, b) -> Double.compare(b.score(), a.score()));
+                return results.subList(0, Math.min(limit, results.size()));
+            } catch (SQLException e) {
+                plugin.getLogger().log(Level.WARNING, "Search failed", e);
+                return Collections.emptyList();
+            }
+        }, executor);
+    }
+
+    @Override
+    public CompletableFuture<Void> delete(Location location) {
+        return CompletableFuture.runAsync(() -> {
+            try (Connection conn = dataSource.getConnection()) {
+                String sql = "DELETE FROM containers WHERE world = ? AND x = ? AND y = ? AND z = ?";
+
+                try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                    stmt.setString(1, location.getWorld().getName());
+                    stmt.setInt(2, location.getBlockX());
+                    stmt.setInt(3, location.getBlockY());
+                    stmt.setInt(4, location.getBlockZ());
+                    stmt.executeUpdate();
+                }
+            } catch (SQLException e) {
+                plugin.getLogger().log(Level.WARNING, "Failed to delete container", e);
+                throw new RuntimeException("Deletion failed", e);
+            }
+        }, executor);
+    }
+
+    @Override
+    public CompletableFuture<StorageStats> getStats() {
+        return CompletableFuture.supplyAsync(() -> {
+            try (Connection conn = dataSource.getConnection()) {
+                try (ResultSet rs = conn.createStatement().executeQuery("SELECT COUNT(*) as count FROM containers")) {
+                    if (rs.next()) {
+                        long count = rs.getLong("count");
+                        return new StorageStats(count, "SQLite");
+                    }
+                }
+            } catch (SQLException e) {
+                plugin.getLogger().log(Level.WARNING, "Failed to get stats", e);
+            }
+            return new StorageStats(0, "SQLite");
+        }, executor);
+    }
+
+    @Override
+    public void shutdown() {
+        if (dataSource != null) {
+            dataSource.close();
+        }
+        executor.shutdown();
+    }
+
+    private byte[] serializeEmbedding(float[] embedding) throws Exception {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        DataOutputStream dos = new DataOutputStream(baos);
+        dos.writeInt(embedding.length);
+        for (float v : embedding) {
+            dos.writeFloat(v);
+        }
+        dos.close();
+        return baos.toByteArray();
+    }
+
+    private float[] deserializeEmbedding(byte[] data) throws Exception {
+        ByteArrayInputStream bais = new ByteArrayInputStream(data);
+        DataInputStream dis = new DataInputStream(bais);
+        int length = dis.readInt();
+        float[] result = new float[length];
+        for (int i = 0; i < length; i++) {
+            result[i] = dis.readFloat();
+        }
+        dis.close();
+        return result;
+    }
+
+    private double cosineSimilarity(float[] a, float[] b) {
+        if (a.length != b.length) {
+            return 0.0;
+        }
+
+        double dotProduct = 0.0;
+        double normA = 0.0;
+        double normB = 0.0;
+
+        for (int i = 0; i < a.length; i++) {
+            dotProduct += a[i] * b[i];
+            normA += a[i] * a[i];
+            normB += b[i] * b[i];
+        }
+
+        double denominator = Math.sqrt(normA) * Math.sqrt(normB);
+        if (denominator == 0.0) {
+            return 0.0;
+        }
+
+        return dotProduct / denominator;
+    }
+}

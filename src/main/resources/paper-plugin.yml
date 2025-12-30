@@ -1,0 +1,16 @@
+name: ChestFind
+version: 1.0-SNAPSHOT
+api-version: "1.21"
+description: Semantic search across all indexed containers
+authors:
+  - AinCraft
+main: org.aincraft.chestfind.ChestFindPlugin
+folia-supported: true
+
+permissions:
+  chestfind.use:
+    description: Allows using the /find command
+    default: true
+  chestfind.admin:
+    description: Allows using admin commands (/chestfind reload, stats, reindex)
+    default: op

@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__claude-context__search_code",
+      "Bash(./gradlew clean:*)",
+      "Bash(./gradlew compileJava:*)"
+    ]
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "claude-context"
+  ]
+}
