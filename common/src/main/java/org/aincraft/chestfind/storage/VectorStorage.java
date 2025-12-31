@@ -1,12 +1,14 @@
 package org.aincraft.chestfind.storage;
 
 import org.aincraft.chestfind.api.LocationData;
+import org.aincraft.chestfind.api.ContainerLocations;
 import org.aincraft.chestfind.model.ContainerChunk;
 import org.aincraft.chestfind.model.ContainerDocument;
 import org.aincraft.chestfind.model.SearchResult;
 import org.aincraft.chestfind.model.StorageStats;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
 public interface VectorStorage {
@@ -59,4 +61,32 @@ public interface VectorStorage {
      * Shuts down the storage and releases resources.
      */
     void shutdown();
+
+    /**
+     * Registers position mappings for a multi-block container.
+     * @param locations The container locations containing primary and all positions
+     * @return CompletableFuture that completes when registration is done
+     */
+    CompletableFuture<Void> registerContainerPositions(ContainerLocations locations);
+
+    /**
+     * Looks up the primary/canonical position from any position.
+     * @param anyPosition Any position of the container
+     * @return CompletableFuture containing the primary location, or empty if not found
+     */
+    CompletableFuture<Optional<LocationData>> getPrimaryLocation(LocationData anyPosition);
+
+    /**
+     * Gets all positions for a container given its primary location.
+     * @param primaryLocation The primary location of the container
+     * @return CompletableFuture containing all positions for this container
+     */
+    CompletableFuture<List<LocationData>> getAllPositions(LocationData primaryLocation);
+
+    /**
+     * Deletes position mappings for a container.
+     * @param primaryLocation The primary location of the container
+     * @return CompletableFuture that completes when deletion is done
+     */
+    CompletableFuture<Void> deleteContainerPositions(LocationData primaryLocation);
 }

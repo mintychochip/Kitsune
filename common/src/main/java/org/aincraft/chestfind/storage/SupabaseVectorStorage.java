@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import org.aincraft.chestfind.api.LocationData;
+import org.aincraft.chestfind.api.ContainerLocations;
 import org.aincraft.chestfind.config.ChestFindConfig;
 import org.aincraft.chestfind.logging.ChestFindLogger;
 import org.aincraft.chestfind.model.ContainerChunk;
@@ -18,6 +19,7 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -92,6 +94,25 @@ public class SupabaseVectorStorage implements VectorStorage {
                         CREATE INDEX IF NOT EXISTS idx_%s_location
                         ON %s (world, x, y, z)
                         """.formatted(tableName, tableName));
+
+                    conn.createStatement().execute("""
+                        CREATE TABLE IF NOT EXISTS container_positions (
+                            world TEXT NOT NULL,
+                            x INTEGER NOT NULL,
+                            y INTEGER NOT NULL,
+                            z INTEGER NOT NULL,
+                            primary_world TEXT NOT NULL,
+                            primary_x INTEGER NOT NULL,
+                            primary_y INTEGER NOT NULL,
+                            primary_z INTEGER NOT NULL,
+                            PRIMARY KEY (world, x, y, z)
+                        )
+                        """);
+
+                    conn.createStatement().execute("""
+                        CREATE INDEX IF NOT EXISTS idx_container_positions_primary
+                        ON container_positions(primary_world, primary_x, primary_y, primary_z)
+                        """);
                 }
 
                 logger.info("Supabase vector storage initialized");
@@ -300,6 +321,150 @@ public class SupabaseVectorStorage implements VectorStorage {
             dataSource.close();
         }
         executor.shutdown();
+    }
+
+    @Override
+    public CompletableFuture<Void> registerContainerPositions(ContainerLocations locations) {
+        // For single-block containers, no mapping needed
+        if (!locations.isMultiBlock()) {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        return CompletableFuture.runAsync(() -> {
+            try (Connection conn = dataSource.getConnection()) {
+                String sql = """
+                    INSERT INTO container_positions
+                    (world, x, y, z, primary_world, primary_x, primary_y, primary_z)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT (world, x, y, z) DO UPDATE SET
+                    primary_world = EXCLUDED.primary_world,
+                    primary_x = EXCLUDED.primary_x,
+                    primary_y = EXCLUDED.primary_y,
+                    primary_z = EXCLUDED.primary_z
+                    """;
+
+                try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                    LocationData primary = locations.primaryLocation();
+                    for (LocationData position : locations.allLocations()) {
+                        stmt.setString(1, position.worldName());
+                        stmt.setInt(2, position.blockX());
+                        stmt.setInt(3, position.blockY());
+                        stmt.setInt(4, position.blockZ());
+                        stmt.setString(5, primary.worldName());
+                        stmt.setInt(6, primary.blockX());
+                        stmt.setInt(7, primary.blockY());
+                        stmt.setInt(8, primary.blockZ());
+                        stmt.addBatch();
+                    }
+                    stmt.executeBatch();
+                }
+            } catch (SQLException e) {
+                logger.log(ChestFindLogger.LogLevel.WARNING, "Failed to register container positions", e);
+                throw new RuntimeException("Position registration failed", e);
+            }
+        }, executor);
+    }
+
+    @Override
+    public CompletableFuture<Optional<LocationData>> getPrimaryLocation(LocationData anyPosition) {
+        return CompletableFuture.supplyAsync(() -> {
+            try (Connection conn = dataSource.getConnection()) {
+                String sql = """
+                    SELECT primary_world, primary_x, primary_y, primary_z
+                    FROM container_positions
+                    WHERE world = ? AND x = ? AND y = ? AND z = ?
+                    """;
+
+                try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                    stmt.setString(1, anyPosition.worldName());
+                    stmt.setInt(2, anyPosition.blockX());
+                    stmt.setInt(3, anyPosition.blockY());
+                    stmt.setInt(4, anyPosition.blockZ());
+
+                    try (ResultSet rs = stmt.executeQuery()) {
+                        if (rs.next()) {
+                            LocationData primary = LocationData.of(
+                                rs.getString("primary_world"),
+                                rs.getInt("primary_x"),
+                                rs.getInt("primary_y"),
+                                rs.getInt("primary_z")
+                            );
+                            return Optional.of(primary);
+                        }
+                    }
+                }
+                // If not found in mapping, return the input position (single-block case)
+                return Optional.of(anyPosition);
+            } catch (SQLException e) {
+                logger.log(ChestFindLogger.LogLevel.WARNING, "Failed to get primary location", e);
+                return Optional.of(anyPosition);
+            }
+        }, executor);
+    }
+
+    @Override
+    public CompletableFuture<List<LocationData>> getAllPositions(LocationData primaryLocation) {
+        return CompletableFuture.supplyAsync(() -> {
+            try (Connection conn = dataSource.getConnection()) {
+                String sql = """
+                    SELECT world, x, y, z
+                    FROM container_positions
+                    WHERE primary_world = ? AND primary_x = ? AND primary_y = ? AND primary_z = ?
+                    """;
+
+                List<LocationData> positions = new ArrayList<>();
+                try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                    stmt.setString(1, primaryLocation.worldName());
+                    stmt.setInt(2, primaryLocation.blockX());
+                    stmt.setInt(3, primaryLocation.blockY());
+                    stmt.setInt(4, primaryLocation.blockZ());
+
+                    try (ResultSet rs = stmt.executeQuery()) {
+                        while (rs.next()) {
+                            LocationData pos = LocationData.of(
+                                rs.getString("world"),
+                                rs.getInt("x"),
+                                rs.getInt("y"),
+                                rs.getInt("z")
+                            );
+                            positions.add(pos);
+                        }
+                    }
+                }
+
+                // If no mappings found, return just the primary location (single-block case)
+                if (positions.isEmpty()) {
+                    return List.of(primaryLocation);
+                }
+                return positions;
+            } catch (SQLException e) {
+                logger.log(ChestFindLogger.LogLevel.WARNING, "Failed to get all positions", e);
+                return List.of(primaryLocation);
+            }
+        }, executor);
+    }
+
+    @Override
+    public CompletableFuture<Void> deleteContainerPositions(LocationData primaryLocation) {
+        return CompletableFuture.runAsync(() -> {
+            try (Connection conn = dataSource.getConnection()) {
+                String sql = """
+                    DELETE FROM container_positions
+                    WHERE primary_world = ? AND primary_x = ? AND primary_y = ? AND primary_z = ?
+                    """;
+
+                try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                    stmt.setString(1, primaryLocation.worldName());
+                    stmt.setInt(2, primaryLocation.blockX());
+                    stmt.setInt(3, primaryLocation.blockY());
+                    stmt.setInt(4, primaryLocation.blockZ());
+                    stmt.executeUpdate();
+                }
+            } catch (SQLException e) {
+                logger.log(ChestFindLogger.LogLevel.WARNING, "Failed to delete container positions", e);
+                throw new RuntimeException("Position deletion failed", e);
+            }
+        }, executor);
     }
 
     private String embeddingToString(float[] embedding) {

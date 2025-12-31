@@ -3,7 +3,10 @@ package org.aincraft.chestfind.listener;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import org.aincraft.chestfind.api.ContainerLocations;
 import org.aincraft.chestfind.indexing.ContainerIndexer;
+import org.aincraft.chestfind.util.ContainerLocationResolver;
+import org.aincraft.chestfind.util.LocationConverter;
 import org.bukkit.Location;
 import org.bukkit.block.Container;
 import org.bukkit.event.EventHandler;
@@ -17,9 +20,11 @@ public class ContainerCloseListener implements Listener {
     private final Map<UUID, ContainerSnapshot> openContainers = new HashMap<>();
 
     private final ContainerIndexer containerIndexer;
+    private final ContainerLocationResolver locationResolver;
 
-    public ContainerCloseListener(ContainerIndexer containerIndexer) {
+    public ContainerCloseListener(ContainerIndexer containerIndexer, ContainerLocationResolver locationResolver) {
         this.containerIndexer = containerIndexer;
+        this.locationResolver = locationResolver;
     }
 
     @EventHandler
@@ -40,16 +45,25 @@ public class ContainerCloseListener implements Listener {
 
     @EventHandler
     public void onInventoryClose(InventoryCloseEvent event) {
-        if (!(event.getInventory().getHolder() instanceof Container container)) {
+        if (!(event.getInventory().getHolder() instanceof Container)) {
             return;
         }
 
         UUID playerUuid = event.getPlayer().getUniqueId();
         ContainerSnapshot snapshot = openContainers.remove(playerUuid);
 
+        // Resolve container locations (handles single and multi-block)
+        ContainerLocations locations = locationResolver.resolveLocations(event.getInventory().getHolder());
+        if (locations == null) {
+            return;
+        }
+
         // If no snapshot, player didn't open it normally - re-index anyway
         if (snapshot == null) {
-            containerIndexer.scheduleIndex(container.getLocation(), event.getInventory().getContents());
+            Location primaryLocation = LocationConverter.toBukkitLocation(locations.primaryLocation());
+            if (primaryLocation != null) {
+                containerIndexer.scheduleIndex(primaryLocation, event.getInventory().getContents());
+            }
             return;
         }
 
@@ -59,8 +73,11 @@ public class ContainerCloseListener implements Listener {
             return; // No changes, skip indexing
         }
 
-        // State changed - re-index
-        containerIndexer.scheduleIndex(container.getLocation(), currentContents);
+        // State changed - re-index using primary location
+        Location primaryLocation = LocationConverter.toBukkitLocation(locations.primaryLocation());
+        if (primaryLocation != null) {
+            containerIndexer.scheduleIndex(primaryLocation, currentContents);
+        }
     }
 
     private boolean inventoriesEqual(ItemStack[] original, ItemStack[] current) {

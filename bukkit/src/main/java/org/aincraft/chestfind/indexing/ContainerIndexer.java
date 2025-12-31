@@ -1,5 +1,7 @@
 package org.aincraft.chestfind.indexing;
 
+import org.aincraft.chestfind.api.ContainerLocations;
+import org.aincraft.chestfind.api.LocationData;
 import org.aincraft.chestfind.config.ChestFindConfig;
 import org.aincraft.chestfind.embedding.EmbeddingService;
 import org.aincraft.chestfind.logging.ChestFindLogger;
@@ -28,6 +30,7 @@ public class ContainerIndexer {
     private final ChestFindConfig config;
     private final ScheduledExecutorService executor = Executors.newScheduledThreadPool(2);
     private final Map<Location, ScheduledFuture<?>> pendingIndexes = new HashMap<>();
+    private final Map<LocationData, ScheduledFuture<?>> pendingLocationDataIndexes = new HashMap<>();
     private final int debounceDelayMs;
 
     public ContainerIndexer(ChestFindLogger logger, EmbeddingService embeddingService,
@@ -44,27 +47,53 @@ public class ContainerIndexer {
             return;
         }
 
-        synchronized (pendingIndexes) {
-            ScheduledFuture<?> existing = pendingIndexes.get(location);
+        LocationData locationData = LocationConverter.toLocationData(location);
+        scheduleIndex(ContainerLocations.single(locationData), items);
+    }
+
+    /**
+     * Schedules indexing of a multi-block or single-block container.
+     * Registers position mappings first, then schedules embedding and indexing.
+     *
+     * @param locations the container locations (primary and all positions)
+     * @param items the items to index
+     */
+    public void scheduleIndex(ContainerLocations locations, ItemStack[] items) {
+        LocationData primaryLocation = locations.primaryLocation();
+
+        // Register container position mappings (async)
+        vectorStorage.registerContainerPositions(locations).exceptionally(ex -> {
+            logger.log(ChestFindLogger.LogLevel.WARNING,
+                "Failed to register container positions at " + primaryLocation, ex);
+            return null;
+        });
+
+        synchronized (pendingLocationDataIndexes) {
+            ScheduledFuture<?> existing = pendingLocationDataIndexes.get(primaryLocation);
             if (existing != null && !existing.isDone()) {
                 existing.cancel(false);
             }
 
             ScheduledFuture<?> future = executor.schedule(
-                () -> performIndex(location, items),
+                () -> performIndex(primaryLocation, items),
                 debounceDelayMs,
                 TimeUnit.MILLISECONDS
             );
 
-            pendingIndexes.put(location, future);
+            pendingLocationDataIndexes.put(primaryLocation, future);
         }
     }
 
     private void performIndex(Location location, ItemStack[] items) {
+        LocationData locationData = LocationConverter.toLocationData(location);
+        performIndex(locationData, items);
+    }
+
+    private void performIndex(LocationData locationData, ItemStack[] items) {
         List<SerializedItem> serializedItems = ItemSerializer.serializeItemsToChunks(items);
 
         if (serializedItems.isEmpty()) {
-            vectorStorage.delete(LocationConverter.toLocationData(location)).exceptionally(ex -> {
+            vectorStorage.delete(locationData).exceptionally(ex -> {
                 logger.log(ChestFindLogger.LogLevel.WARNING, "Failed to delete empty container", ex);
                 return null;
             });
@@ -83,14 +112,13 @@ public class ContainerIndexer {
             String embeddingText = serialized.embeddingText().toLowerCase();
 
             // Log what we're embedding
-            logger.info("Indexing chunk " + chunkIndex + " at " + location +
+            logger.info("Indexing chunk " + chunkIndex + " at " + locationData +
                 ": embedding=\"" + embeddingText + "\"");
 
             // Embed the lowercase text, store original in content_text for display
-            // Convert Bukkit Location to platform-agnostic LocationData
             CompletableFuture<ContainerChunk> chunkFuture = embeddingService.embed(embeddingText, "RETRIEVAL_DOCUMENT")
                 .thenApply(embedding -> new ContainerChunk(
-                    LocationConverter.toLocationData(location),
+                    locationData,
                     chunkIndex,
                     embeddingText,  // Store lowercase text that was embedded
                     embedding,
@@ -115,12 +143,12 @@ public class ContainerIndexer {
             })
             .thenCompose(chunks -> vectorStorage.indexChunks(chunks))
             .thenRun(() -> {
-                synchronized (pendingIndexes) {
-                    pendingIndexes.remove(location);
+                synchronized (pendingLocationDataIndexes) {
+                    pendingLocationDataIndexes.remove(locationData);
                 }
             })
             .exceptionally(ex -> {
-                logger.log(ChestFindLogger.LogLevel.WARNING, "Failed to index container at " + location, ex);
+                logger.log(ChestFindLogger.LogLevel.WARNING, "Failed to index container at " + locationData, ex);
                 return null;
             });
     }
@@ -206,6 +234,14 @@ public class ContainerIndexer {
                 }
             }
             pendingIndexes.clear();
+        }
+        synchronized (pendingLocationDataIndexes) {
+            for (ScheduledFuture<?> future : pendingLocationDataIndexes.values()) {
+                if (future != null && !future.isDone()) {
+                    future.cancel(false);
+                }
+            }
+            pendingLocationDataIndexes.clear();
         }
         executor.shutdown();
         try {
