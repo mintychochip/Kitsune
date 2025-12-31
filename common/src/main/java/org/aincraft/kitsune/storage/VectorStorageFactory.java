@@ -1,5 +1,6 @@
 package org.aincraft.kitsune.storage;
 
+import java.nio.file.Path;
 import java.util.logging.Logger;
 import org.aincraft.kitsune.KitsunePlatform;
 import org.aincraft.kitsune.config.KitsuneConfig;
@@ -25,6 +26,14 @@ public class VectorStorageFactory {
                 Logger julLogger = createJulLoggerAdapter(logger);
                 String dbPath = dataFolder.getDataFolder().resolve(config.getSqlitePath()).toString();
                 yield new SqliteVectorStorage(julLogger, dbPath);
+            }
+            case "jvector" -> {
+                // JVectorStorage uses java.util.logging.Logger
+                // Create an adapter that delegates to ChestFindLogger
+                Logger julLogger = createJulLoggerAdapter(logger);
+                Path dataDir = dataFolder.getDataFolder();
+                int dimension = config.getEmbeddingDimension();
+                yield new JVectorStorage(julLogger, dataDir, dimension);
             }
             default -> {
                 logger.warning("Unknown storage provider: " + provider + ", using SQLite");
