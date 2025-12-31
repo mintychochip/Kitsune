@@ -3,7 +3,7 @@
 # Embedding Service Configuration
 embedding:
   # Provider: "onnx" (local), "openai", or "google"
-  provider: "google"
+  provider: "onnx"
 
   # OpenAI settings (only used if provider is "openai")
   openai:
@@ -17,7 +17,12 @@ embedding:
     # Models: gemini-embedding-001 (stable), text-embedding-004 (newer, better)
     model: "text-embedding-004"
 
-  # Embedding dimension (ONNX all-MiniLM-L6-v2: 384, OpenAI: varies, Google: 768)
+  # ONNX settings (only used if provider is "onnx")
+  onnx:
+    # Model: nomic-embed-text-v1.5, all-MiniLM-L6-v2
+    model: "nomic-embed-text-v1.5"
+
+  # Embedding dimension (nomic: 768, all-MiniLM-L6-v2: 384)
   dimension: 768
 
 # Storage Configuration

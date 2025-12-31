@@ -12,24 +12,29 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import org.aincraft.kitsune.config.KitsuneConfig;
 import org.aincraft.kitsune.logging.ChestFindLogger;
 import org.aincraft.kitsune.platform.DataFolderProvider;
 
 public class OnnxEmbeddingService implements EmbeddingService {
     private final ChestFindLogger logger;
     private final DataFolderProvider dataFolderProvider;
+    private final KitsuneConfig config;
     private final ScheduledExecutorService executor = Executors.newScheduledThreadPool(2);
     private OrtEnvironment env;
     private OrtSession session;
     private HuggingFaceTokenizer tokenizer;
+    private int embeddingDim;
+    private String modelName;
 
-    private static final String MODEL_NAME = "all-MiniLM-L6-v2";
-    private static final int EMBEDDING_DIM = 384;
     private static final int MAX_SEQUENCE_LENGTH = 512;
 
-    public OnnxEmbeddingService(ChestFindLogger logger, DataFolderProvider dataFolderProvider) {
+    public OnnxEmbeddingService(KitsuneConfig config, ChestFindLogger logger, DataFolderProvider dataFolderProvider) {
+        this.config = config;
         this.logger = logger;
         this.dataFolderProvider = dataFolderProvider;
+        this.modelName = config.getOnnxModel();
+        this.embeddingDim = config.getEmbeddingDimension();
     }
 
     @Override
@@ -38,12 +43,12 @@ public class OnnxEmbeddingService implements EmbeddingService {
             try {
                 env = OrtEnvironment.getEnvironment();
                 Path dataFolder = dataFolderProvider.getDataFolder();
-                Path modelPath = dataFolder.resolve("models").resolve(MODEL_NAME + ".onnx");
+                Path modelPath = dataFolder.resolve("models").resolve(modelName + ".onnx");
                 Path vocabPath = dataFolder.resolve("models").resolve("vocab.txt");
 
                 if (!Files.exists(modelPath)) {
                     logger.warning("ONNX model not found at " + modelPath);
-                    logger.warning("Please download " + MODEL_NAME + ".onnx and place it in plugins/ChestFind/models/");
+                    logger.warning("Please download " + modelName + ".onnx and place it in plugins/ChestFind/models/");
                     throw new IllegalStateException("ONNX model not found");
                 }
 
@@ -66,12 +71,12 @@ public class OnnxEmbeddingService implements EmbeddingService {
                     logger.info("Loaded tokenizer from vocab.txt");
                 } else {
                     logger.warning("No tokenizer found. Please provide either:");
-                    logger.warning("  - tokenizer.json (recommended for all-MiniLM-L6-v2)");
+                    logger.warning("  - tokenizer.json (recommended for " + modelName + ")");
                     logger.warning("  - vocab.txt (legacy BERT tokenization)");
                     throw new IllegalStateException("Tokenizer not found");
                 }
 
-                logger.info("ONNX embedding service initialized with " + MODEL_NAME);
+                logger.info("ONNX embedding service initialized with " + modelName + " (embedding dimension: " + embeddingDim + ")");
                 return null;
             } catch (Exception e) {
                 logger.log(ChestFindLogger.LogLevel.SEVERE, "Failed to initialize ONNX session", e);
@@ -138,13 +143,13 @@ public class OnnxEmbeddingService implements EmbeddingService {
     }
 
     private float[] meanPooling(float[][][] lastHiddenState, long[] attentionMask) {
-        float[] result = new float[EMBEDDING_DIM];
+        float[] result = new float[embeddingDim];
         float sumMask = 0;
 
         // Mean pooling weighted by attention mask
         for (int i = 0; i < lastHiddenState[0].length && i < attentionMask.length; i++) {
             if (attentionMask[i] == 1) {
-                for (int j = 0; j < EMBEDDING_DIM && j < lastHiddenState[0][i].length; j++) {
+                for (int j = 0; j < embeddingDim && j < lastHiddenState[0][i].length; j++) {
                     result[j] += lastHiddenState[0][i][j];
                 }
                 sumMask += 1.0f;
@@ -153,7 +158,7 @@ public class OnnxEmbeddingService implements EmbeddingService {
 
         // Average
         if (sumMask > 0) {
-            for (int i = 0; i < EMBEDDING_DIM; i++) {
+            for (int i = 0; i < embeddingDim; i++) {
                 result[i] /= sumMask;
             }
         }

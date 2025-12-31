@@ -22,10 +22,10 @@ public class EmbeddingServiceFactory {
                     logger,
                     config.getGoogleApiKey(),
                     config.getGoogleModel());
-            case "onnx" -> new OnnxEmbeddingService(logger, dataFolder);
+            case "onnx" -> new OnnxEmbeddingService(config, logger, dataFolder);
             default -> {
                 logger.warning("Unknown embedding provider: " + provider + ", using ONNX");
-                yield new OnnxEmbeddingService(logger, dataFolder);
+                yield new OnnxEmbeddingService(config, logger, dataFolder);
             }
         };
     }

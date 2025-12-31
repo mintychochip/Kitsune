@@ -14,7 +14,6 @@ import org.aincraft.kitsune.config.KitsuneConfig;
 import org.aincraft.kitsune.embedding.EmbeddingService;
 import org.aincraft.kitsune.embedding.EmbeddingServiceFactory;
 import org.aincraft.kitsune.indexing.ContainerIndexer;
-import org.aincraft.kitsune.indexing.ItemSerializer;
 import org.aincraft.kitsune.indexing.ItemTagProviderRegistryImpl;
 import org.aincraft.kitsune.listener.ContainerBreakListener;
 import org.aincraft.kitsune.listener.ContainerCloseListener;
@@ -56,7 +55,7 @@ public final class BukkitKitsuneMain extends JavaPlugin {
 
         // Create platform abstractions
         var configProvider = new BukkitConfigProvider(getConfig());
-        this.platformPlugin = new BukkitKitsunePlugin(this, configProvider);
+        this.platformPlugin = new BukkitKitsunePlatform(this, configProvider);
         this.kitsuneConfig = new KitsuneConfig(configProvider);
 
         // Create the tag provider registry (available immediately for other plugins)

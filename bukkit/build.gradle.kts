@@ -32,4 +32,10 @@ tasks.shadowJar {
     exclude("META-INF/*.SF")
     exclude("META-INF/*.DSA")
     exclude("META-INF/*.RSA")
+
+    // Merge service files
+    mergeServiceFiles()
+
+    // Exclude DJL - loaded via Paper library loader
+    exclude("ai/djl/**")
 }

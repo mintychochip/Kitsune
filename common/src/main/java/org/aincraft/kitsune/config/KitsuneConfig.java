@@ -69,6 +69,10 @@ public class KitsuneConfig {
         return config.getInt("embedding.dimension", 384);
     }
 
+    public String getOnnxModel() {
+        return config.getString("embedding.onnx.model", "nomic-embed-text-v1.5");
+    }
+
     // Storage settings
     public String getSqlitePath() {
         return config.getString("storage.sqlite.path", "kitsune.db");
