@@ -227,18 +227,41 @@ public class JVectorStorage implements VectorStorage {
     @Override
     @Deprecated
     public CompletableFuture<Void> index(ContainerDocument document) {
+        java.util.UUID containerId = generateContainerIdFromLocation(document.location());
         ContainerChunk chunk = new ContainerChunk(
-            document.location(),
+            containerId,
             0,
             document.contentText(),
             document.embedding(),
             document.timestamp()
         );
-        return indexChunks(List.of(chunk));
+        return indexChunks(List.of(chunk), document.location());
+    }
+
+    /**
+     * Generates a deterministic container ID from a location.
+     * Phase 1 implementation uses UUID v5 (namespace-based) from location coordinates.
+     *
+     * @param location the location to generate ID from
+     * @return a stable UUID for the location
+     */
+    private java.util.UUID generateContainerIdFromLocation(org.aincraft.kitsune.api.Location location) {
+        String locationString = location.worldName() + ":" + location.blockX() + "," +
+                                location.blockY() + "," + location.blockZ();
+        return java.util.UUID.nameUUIDFromBytes(locationString.getBytes());
     }
 
     @Override
     public CompletableFuture<Void> indexChunks(List<ContainerChunk> chunks) {
+        // Default implementation - not recommended for Phase 1+ code
+        // Subclasses should use the overloaded method with location
+        throw new UnsupportedOperationException(
+            "indexChunks(List<ContainerChunk>) is not supported. Use indexChunks(List<ContainerChunk>, Location) instead."
+        );
+    }
+
+    @Override
+    public CompletableFuture<Void> indexChunks(List<ContainerChunk> chunks, Location location) {
         if (chunks.isEmpty()) {
             return CompletableFuture.completedFuture(null);
         }
@@ -246,10 +269,8 @@ public class JVectorStorage implements VectorStorage {
         return CompletableFuture.runAsync(() -> {
             indexLock.writeLock().lock();
             try {
-                Location loc = chunks.get(0).location();
-
                 // Delete existing chunks for this location
-                deleteLocationChunks(loc);
+                deleteLocationChunks(location);
 
                 // Insert new chunks - generate UUIDs for each
                 try (Connection conn = dataSource.getConnection()) {
@@ -266,16 +287,15 @@ public class JVectorStorage implements VectorStorage {
                         try (PreparedStatement stmt = conn.prepareStatement(sql)) {
                             stmt.setString(1, uuid.toString());
                             stmt.setInt(2, ordinal);
-                            stmt.setString(3, chunk.location().worldName());
-                            stmt.setInt(4, chunk.location().blockX());
-                            stmt.setInt(5, chunk.location().blockY());
-                            stmt.setInt(6, chunk.location().blockZ());
+                            stmt.setString(3, location.worldName());
+                            stmt.setInt(4, location.blockX());
+                            stmt.setInt(5, location.blockY());
+                            stmt.setInt(6, location.blockZ());
                             stmt.setInt(7, chunk.chunkIndex());
                             stmt.setString(8, chunk.contentText());
                             stmt.setBytes(9, serializeEmbedding(chunk.embedding()));
                             stmt.setLong(10, chunk.timestamp());
-                            // ContainerChunk doesn't have containerPath, set to null
-                            stmt.setNull(11, java.sql.Types.VARCHAR);
+                            stmt.setString(11, formatContainerPath(chunk.containerPath()));
                             stmt.executeUpdate();
                         }
 
@@ -293,6 +313,10 @@ public class JVectorStorage implements VectorStorage {
                 indexLock.writeLock().unlock();
             }
         }, executor);
+    }
+
+    private String formatContainerPath(org.aincraft.kitsune.model.ContainerPath path) {
+        return path != null ? path.toString() : null;
     }
 
     private void deleteLocationChunks(Location loc) throws SQLException {
@@ -617,9 +641,10 @@ public class JVectorStorage implements VectorStorage {
                                 rs.getInt("y"),
                                 rs.getInt("z")
                             );
+                            java.util.UUID containerId = generateContainerIdFromLocation(loc);
                             return Optional.of(new IndexedChunk(
                                 id,
-                                loc,
+                                containerId,
                                 rs.getInt("chunk_index"),
                                 rs.getString("content_text"),
                                 deserializeEmbedding(rs.getBytes("embedding")),

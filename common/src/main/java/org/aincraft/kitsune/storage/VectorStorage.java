@@ -35,6 +35,16 @@ public interface VectorStorage {
     CompletableFuture<Void> indexChunks(List<ContainerChunk> chunks);
 
     /**
+     * Indexes container chunks with explicit location context.
+     * Required for Phase 1 where chunks no longer carry location information.
+     * Deletes existing chunks for this location first.
+     * @param chunks The container chunks to index
+     * @param location The location context for these chunks
+     * @return CompletableFuture that completes when indexing is done
+     */
+    CompletableFuture<Void> indexChunks(List<ContainerChunk> chunks, Location location);
+
+    /**
      * Searches for containers by embedding similarity.
      * @param embedding The query embedding
      * @param limit Maximum number of results

@@ -86,6 +86,9 @@ public class ContainerIndexer {
      * @param serializedItems the serialized items to index
      */
     protected void performIndex(Location location, List<SerializedItem> serializedItems) {
+        // Generate a stable container ID from the location
+        // For Phase 1, we use a deterministic UUID based on location
+        java.util.UUID containerId = generateContainerIdFromLocation(location);
 
         if (serializedItems.isEmpty()) {
             vectorStorage.delete(location).exceptionally(ex -> {
@@ -113,7 +116,7 @@ public class ContainerIndexer {
             // Embed the lowercase text, store original in content_text for display
             CompletableFuture<ContainerChunk> chunkFuture = embeddingService.embed(embeddingText, "RETRIEVAL_DOCUMENT")
                 .thenApply(embedding -> new ContainerChunk(
-                    location,
+                    containerId,
                     chunkIndex,
                     embeddingText,  // Store lowercase text that was embedded
                     embedding,
@@ -136,7 +139,7 @@ public class ContainerIndexer {
                 }
                 return chunks;
             })
-            .thenCompose(chunks -> vectorStorage.indexChunks(chunks))
+            .thenCompose(chunks -> vectorStorage.indexChunks(chunks, location))
             .thenRun(() -> {
                 synchronized (pendingIndexes) {
                     pendingIndexes.remove(location);
@@ -146,6 +149,21 @@ public class ContainerIndexer {
                 logger.log(Level.WARNING, "Failed to index container at " + location, ex);
                 return null;
             });
+    }
+
+    /**
+     * Generates a deterministic container ID from a location.
+     * Phase 1 implementation uses UUID v5 (namespace-based) from location coordinates.
+     *
+     * @param location the location to generate ID from
+     * @return a stable UUID for the location
+     */
+    private java.util.UUID generateContainerIdFromLocation(Location location) {
+        // Create a namespace UUID for container locations
+        java.util.UUID namespace = java.util.UUID.nameUUIDFromBytes("container-location".getBytes());
+        String locationString = location.worldName() + ":" + location.blockX() + "," +
+                                location.blockY() + "," + location.blockZ();
+        return java.util.UUID.nameUUIDFromBytes(locationString.getBytes());
     }
 
     public void shutdown() {
