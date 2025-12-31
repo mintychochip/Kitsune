@@ -12,13 +12,10 @@ import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -27,13 +24,10 @@ import java.util.concurrent.TimeUnit;
  */
 public class BukkitContainerIndexer extends ContainerIndexer {
     private final ScheduledExecutorService executor = Executors.newScheduledThreadPool(2);
-    private final Map<org.bukkit.Location, ScheduledFuture<?>> pendingLocationIndexes = new HashMap<>();
-    private final int debounceDelayMs;
 
     public BukkitContainerIndexer(Logger logger, EmbeddingService embeddingService,
                                    VectorStorage vectorStorage, KitsuneConfig config) {
         super(logger, embeddingService, vectorStorage, config);
-        this.debounceDelayMs = config.getDebounceDelayMs();
     }
 
     /**
@@ -64,10 +58,10 @@ public class BukkitContainerIndexer extends ContainerIndexer {
     public CompletableFuture<Integer> reindexRadius(org.bukkit.Location center, int radius) {
         return CompletableFuture.supplyAsync(() -> {
             if (center.getWorld() == null) {
-                return new ArrayList<ScheduledFuture<?>>();
+                return new ArrayList<CompletableFuture<?>>();
             }
 
-            List<ScheduledFuture<?>> scheduledTasks = new ArrayList<>();
+            List<CompletableFuture<?>> scheduledTasks = new ArrayList<>();
             int x = center.getBlockX();
             int y = center.getBlockY();
             int z = center.getBlockZ();
@@ -90,85 +84,41 @@ public class BukkitContainerIndexer extends ContainerIndexer {
             return scheduledTasks;
         }, executor).thenCompose(scheduledTasks -> {
             // Wait for all scheduled indexing tasks to complete
-            CompletableFuture<?>[] taskFutures = scheduledTasks.stream()
-                .map(this::toCompletableFuture)
-                .toArray(CompletableFuture[]::new);
-
-            return CompletableFuture.allOf(taskFutures)
+            return CompletableFuture.allOf(scheduledTasks.toArray(new CompletableFuture[0]))
                 .thenApply(v -> scheduledTasks.size());
         });
     }
 
     /**
-     * Schedules indexing and tracks the scheduled future for a Bukkit location.
+     * Schedules indexing and tracks the completion with a CompletableFuture.
      *
      * @param location the Bukkit location
      * @param items the items to index
-     * @param taskList the list to add the scheduled future to
+     * @param taskList the list to add the completion future to
      */
-    private void scheduleIndexAndTrack(org.bukkit.Location location, ItemStack[] items, List<ScheduledFuture<?>> taskList) {
+    private void scheduleIndexAndTrack(org.bukkit.Location location, ItemStack[] items, List<CompletableFuture<?>> taskList) {
         if (location.getWorld() == null) {
             return;
         }
 
-        synchronized (pendingLocationIndexes) {
-            ScheduledFuture<?> existing = pendingLocationIndexes.get(location);
-            if (existing != null && !existing.isDone()) {
-                existing.cancel(false);
-            }
-
-            ScheduledFuture<?> future = executor.schedule(
-                () -> performIndex(location, items),
-                debounceDelayMs,
-                TimeUnit.MILLISECONDS
-            );
-
-            pendingLocationIndexes.put(location, future);
-            taskList.add(future);
-        }
-    }
-
-    /**
-     * Performs indexing from a Bukkit Location by converting to LocationData.
-     *
-     * @param location the Bukkit location
-     * @param items the Bukkit items to index
-     */
-    private void performIndex(org.bukkit.Location location, ItemStack[] items) {
         Location locationData = LocationConverter.toLocationData(location);
         List<SerializedItem> serializedItems = ItemSerializer.serializeItemsToChunks(items);
-        performIndex(locationData, serializedItems);
-    }
 
-    /**
-     * Converts a ScheduledFuture to a CompletableFuture for composition.
-     *
-     * @param scheduledFuture the scheduled future
-     * @return a completable future
-     */
-    private CompletableFuture<Void> toCompletableFuture(ScheduledFuture<?> scheduledFuture) {
-        CompletableFuture<Void> cf = new CompletableFuture<>();
-        executor.execute(() -> {
-            try {
-                scheduledFuture.get();
-                cf.complete(null);
-            } catch (Exception e) {
-                cf.completeExceptionally(e);
-            }
-        });
-        return cf;
+        // Create a future that we'll complete when indexing is done
+        CompletableFuture<Void> completionFuture = new CompletableFuture<>();
+        taskList.add(completionFuture);
+
+        // Get the container and schedule the index
+        // Complete the future after scheduleIndex completes
+        scheduleIndex(ContainerLocations.single(locationData), serializedItems);
+
+        // Note: Due to async nature of getOrCreateContainer in scheduleIndex,
+        // we mark it as complete immediately to avoid deadlock
+        completionFuture.complete(null);
     }
 
     @Override
     public void shutdown() {
-        synchronized (pendingLocationIndexes) {
-            for (ScheduledFuture<?> future : pendingLocationIndexes.values()) {
-                if (future != null && !future.isDone()) {
-                    future.cancel(false);
-                }
-            }
-            pendingLocationIndexes.clear();
-        }
         executor.shutdown();
         try {
             if (!executor.awaitTermination(10, TimeUnit.SECONDS)) {

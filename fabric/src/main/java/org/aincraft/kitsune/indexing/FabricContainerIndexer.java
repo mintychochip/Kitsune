@@ -6,10 +6,10 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.math.BlockPos;
 import org.aincraft.kitsune.KitsuneMod;
+import org.aincraft.kitsune.api.ContainerLocations;
 import org.aincraft.kitsune.api.ItemTagProviderRegistry;
 import org.aincraft.kitsune.config.KitsuneConfig;
 import org.aincraft.kitsune.embedding.EmbeddingService;
-import org.aincraft.kitsune.model.ContainerChunk;
 import org.aincraft.kitsune.platform.FabricLocationFactory;
 import org.aincraft.kitsune.storage.VectorStorage;
 import org.slf4j.Logger;
@@ -24,55 +24,54 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.logging.Level;
 
 /**
  * Fabric implementation of container indexing with debouncing.
+ * Extends the common ContainerIndexer for platform-agnostic core logic.
  */
-public class FabricContainerIndexer {
+public class FabricContainerIndexer extends ContainerIndexer {
     private static final Logger LOGGER = LoggerFactory.getLogger("Kitsune");
 
     private final KitsuneMod mod;
-    private final EmbeddingService embeddingService;
-    private final VectorStorage vectorStorage;
-    private final KitsuneConfig config;
     private final FabricItemSerializer itemSerializer;
     private final ScheduledExecutorService executor = Executors.newScheduledThreadPool(2);
     private final Map<BlockPos, ScheduledFuture<?>> pendingIndexes = new HashMap<>();
-    private final int debounceDelayMs;
 
     public FabricContainerIndexer(KitsuneMod mod, EmbeddingService embeddingService,
                                   VectorStorage vectorStorage, KitsuneConfig config,
                                   ItemTagProviderRegistry tagRegistry) {
+        super(convertLogger(), embeddingService, vectorStorage, config);
         this.mod = mod;
-        this.embeddingService = embeddingService;
-        this.vectorStorage = vectorStorage;
-        this.config = config;
         this.itemSerializer = new FabricItemSerializer(tagRegistry);
-        this.debounceDelayMs = config.getDebounceDelayMs();
+    }
+
+    private static java.util.logging.Logger convertLogger() {
+        return java.util.logging.Logger.getLogger("Kitsune");
     }
 
     /**
-     * Schedule indexing of a container at the given position.
+     * Fabric-specific wrapper for scheduling index by world and position.
+     * Converts Fabric world/position to platform-agnostic ContainerLocations and serializes items.
+     *
+     * @param world the Fabric world
+     * @param pos the block position
+     * @param items the items to index
      */
     public void scheduleIndex(ServerWorld world, BlockPos pos, ItemStack[] items) {
-        synchronized (pendingIndexes) {
-            ScheduledFuture<?> existing = pendingIndexes.get(pos);
-            if (existing != null && !existing.isDone()) {
-                existing.cancel(false);
-            }
+        var locationData = FabricLocationFactory.toLocationData(world, pos);
+        List<SerializedItem> serializedItems = itemSerializer.serializeItemsToChunks(items);
 
-            ScheduledFuture<?> future = executor.schedule(
-                    () -> performIndex(world, pos, items),
-                    debounceDelayMs,
-                    TimeUnit.MILLISECONDS
-            );
-
-            pendingIndexes.put(pos, future);
-        }
+        // Call the parent scheduleIndex with container locations
+        scheduleIndex(ContainerLocations.single(locationData), serializedItems);
     }
 
     /**
      * Schedule indexing of a container inventory.
+     *
+     * @param world the Fabric world
+     * @param pos the block position
+     * @param inventory the inventory to index
      */
     public void scheduleIndex(ServerWorld world, BlockPos pos, Inventory inventory) {
         ItemStack[] items = new ItemStack[inventory.size()];
@@ -82,74 +81,18 @@ public class FabricContainerIndexer {
         scheduleIndex(world, pos, items);
     }
 
-    private void performIndex(ServerWorld world, BlockPos pos, ItemStack[] items) {
-        var locationData = FabricLocationFactory.toLocationData(world, pos);
-        List<SerializedItem> serializedItems = itemSerializer.serializeItemsToChunks(items);
-
-        if (serializedItems.isEmpty()) {
-            vectorStorage.delete(locationData).exceptionally(ex -> {
-                LOGGER.warn("Failed to delete empty container at {}", pos, ex);
-                return null;
-            });
-            return;
-        }
-
-        // Create embedding for each chunk
-        long timestamp = System.currentTimeMillis();
-        List<CompletableFuture<ContainerChunk>> chunkFutures = new ArrayList<>();
-
-        for (int i = 0; i < serializedItems.size(); i++) {
-            final int chunkIndex = i;
-            final SerializedItem serialized = serializedItems.get(i);
-
-            // Normalize to lowercase for better embedding consistency
-            String embeddingText = serialized.embeddingText().toLowerCase();
-
-            LOGGER.debug("Indexing chunk {} at {}: embedding=\"{}\"", chunkIndex, pos, embeddingText);
-
-            CompletableFuture<ContainerChunk> chunkFuture = embeddingService.embed(embeddingText, "RETRIEVAL_DOCUMENT")
-                    .thenApply(embedding -> new ContainerChunk(
-                            locationData,
-                            chunkIndex,
-                            embeddingText,
-                            embedding,
-                            timestamp
-                    ));
-
-            chunkFutures.add(chunkFuture);
-        }
-
-        // Wait for all chunks to be embedded, then index them
-        CompletableFuture.allOf(chunkFutures.toArray(new CompletableFuture[0]))
-                .thenApply(v -> {
-                    List<ContainerChunk> chunks = new ArrayList<>();
-                    for (CompletableFuture<ContainerChunk> future : chunkFutures) {
-                        try {
-                            chunks.add(future.get());
-                        } catch (Exception e) {
-                            LOGGER.warn("Failed to get chunk embedding", e);
-                        }
-                    }
-                    return chunks;
-                })
-                .thenCompose(chunks -> vectorStorage.indexChunks(chunks))
-                .thenRun(() -> {
-                    synchronized (pendingIndexes) {
-                        pendingIndexes.remove(pos);
-                    }
-                })
-                .exceptionally(ex -> {
-                    LOGGER.warn("Failed to index container at {}", pos, ex);
-                    return null;
-                });
-    }
-
     /**
      * Reindex all containers within a radius of the center position.
+     *
+     * @param world the Fabric world
+     * @param center the center block position
+     * @param radius the scan radius
+     * @return CompletableFuture with count of reindexed containers
      */
     public CompletableFuture<Integer> reindexRadius(ServerWorld world, BlockPos center, int radius) {
         return CompletableFuture.supplyAsync(() -> {
-            List<ScheduledFuture<?>> scheduledTasks = new ArrayList<>();
+            List<CompletableFuture<?>> scheduledTasks = new ArrayList<>();
+            int count = 0;
 
             for (int dx = -radius; dx <= radius; dx++) {
                 for (int dy = -radius; dy <= radius; dy++) {
@@ -165,60 +108,20 @@ public class FabricContainerIndexer {
                                     items[i] = inventory.getStack(i).copy();
                                 }
 
-                                synchronized (pendingIndexes) {
-                                    ScheduledFuture<?> existing = pendingIndexes.get(pos);
-                                    if (existing != null && !existing.isDone()) {
-                                        existing.cancel(false);
-                                    }
-
-                                    ScheduledFuture<?> future = executor.schedule(
-                                            () -> performIndex(world, pos, items),
-                                            debounceDelayMs,
-                                            TimeUnit.MILLISECONDS
-                                    );
-
-                                    pendingIndexes.put(pos, future);
-                                    scheduledTasks.add(future);
-                                }
+                                scheduleIndex(world, pos, items);
+                                count++;
                             }
                         }
                     }
                 }
             }
 
-            return scheduledTasks;
-        }, executor).thenCompose(scheduledTasks -> {
-            CompletableFuture<?>[] taskFutures = scheduledTasks.stream()
-                    .map(this::toCompletableFuture)
-                    .toArray(CompletableFuture[]::new);
-
-            return CompletableFuture.allOf(taskFutures)
-                    .thenApply(v -> scheduledTasks.size());
-        });
+            return count;
+        }, executor).thenApply(count -> count);
     }
 
-    private CompletableFuture<Void> toCompletableFuture(ScheduledFuture<?> scheduledFuture) {
-        CompletableFuture<Void> cf = new CompletableFuture<>();
-        executor.execute(() -> {
-            try {
-                scheduledFuture.get();
-                cf.complete(null);
-            } catch (Exception e) {
-                cf.completeExceptionally(e);
-            }
-        });
-        return cf;
-    }
-
+    @Override
     public void shutdown() {
-        synchronized (pendingIndexes) {
-            for (ScheduledFuture<?> future : pendingIndexes.values()) {
-                if (future != null && !future.isDone()) {
-                    future.cancel(false);
-                }
-            }
-            pendingIndexes.clear();
-        }
         executor.shutdown();
         try {
             if (!executor.awaitTermination(10, TimeUnit.SECONDS)) {
@@ -227,5 +130,6 @@ public class FabricContainerIndexer {
         } catch (InterruptedException e) {
             executor.shutdownNow();
         }
+        super.shutdown();
     }
 }
