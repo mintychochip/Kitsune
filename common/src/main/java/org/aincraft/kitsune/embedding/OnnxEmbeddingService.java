@@ -19,18 +19,16 @@ import org.aincraft.kitsune.platform.DataFolderProvider;
 public class OnnxEmbeddingService implements EmbeddingService {
     private final ChestFindLogger logger;
     private final DataFolderProvider dataFolderProvider;
-    private final KitsuneConfig config;
     private final ScheduledExecutorService executor = Executors.newScheduledThreadPool(2);
     private OrtEnvironment env;
     private OrtSession session;
     private HuggingFaceTokenizer tokenizer;
-    private int embeddingDim;
-    private String modelName;
 
+    private final String modelName;
+    private final int embeddingDim;
     private static final int MAX_SEQUENCE_LENGTH = 512;
 
     public OnnxEmbeddingService(KitsuneConfig config, ChestFindLogger logger, DataFolderProvider dataFolderProvider) {
-        this.config = config;
         this.logger = logger;
         this.dataFolderProvider = dataFolderProvider;
         this.modelName = config.getOnnxModel();
@@ -48,7 +46,7 @@ public class OnnxEmbeddingService implements EmbeddingService {
 
                 if (!Files.exists(modelPath)) {
                     logger.warning("ONNX model not found at " + modelPath);
-                    logger.warning("Please download " + modelName + ".onnx and place it in plugins/ChestFind/models/");
+                    logger.warning("Please download " + modelName + ".onnx and place it in plugins/Kitsune/models/");
                     throw new IllegalStateException("ONNX model not found");
                 }
 
@@ -71,12 +69,12 @@ public class OnnxEmbeddingService implements EmbeddingService {
                     logger.info("Loaded tokenizer from vocab.txt");
                 } else {
                     logger.warning("No tokenizer found. Please provide either:");
-                    logger.warning("  - tokenizer.json (recommended for " + modelName + ")");
+                    logger.warning("  - tokenizer.json (recommended for all-MiniLM-L6-v2)");
                     logger.warning("  - vocab.txt (legacy BERT tokenization)");
                     throw new IllegalStateException("Tokenizer not found");
                 }
 
-                logger.info("ONNX embedding service initialized with " + modelName + " (embedding dimension: " + embeddingDim + ")");
+                logger.info("ONNX embedding service initialized with " + modelName + " (" + embeddingDim + " dimensions)");
                 return null;
             } catch (Exception e) {
                 logger.log(ChestFindLogger.LogLevel.SEVERE, "Failed to initialize ONNX session", e);

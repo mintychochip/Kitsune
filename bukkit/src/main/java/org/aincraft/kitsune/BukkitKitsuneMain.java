@@ -13,7 +13,7 @@ import org.aincraft.kitsune.config.BukkitConfigProvider;
 import org.aincraft.kitsune.config.KitsuneConfig;
 import org.aincraft.kitsune.embedding.EmbeddingService;
 import org.aincraft.kitsune.embedding.EmbeddingServiceFactory;
-import org.aincraft.kitsune.indexing.ContainerIndexer;
+import org.aincraft.kitsune.indexing.BukkitContainerIndexer;
 import org.aincraft.kitsune.indexing.ItemTagProviderRegistryImpl;
 import org.aincraft.kitsune.listener.ContainerBreakListener;
 import org.aincraft.kitsune.listener.ContainerCloseListener;
@@ -43,7 +43,7 @@ public final class BukkitKitsuneMain extends JavaPlugin {
     private EmbeddingCache embeddingCache;
     private VectorStorage vectorStorage;
     private ProtectionProvider protectionProvider;
-    private ContainerIndexer containerIndexer;
+    private BukkitContainerIndexer containerIndexer;
     private ItemTagProviderRegistry itemTagProviderRegistry;
     private ProviderMetadata providerMetadata;
     private boolean initialized = false;
@@ -95,7 +95,7 @@ public final class BukkitKitsuneMain extends JavaPlugin {
             this.providerMetadata.load();
 
             // Create ContainerIndexer
-            this.containerIndexer = new ContainerIndexer(
+            this.containerIndexer = new BukkitContainerIndexer(
                 platformPlugin,
                 embeddingService,
                 vectorStorage,
@@ -454,7 +454,7 @@ public final class BukkitKitsuneMain extends JavaPlugin {
         return kitsuneConfig;
     }
 
-    public ContainerIndexer getContainerIndexer() {
+    public BukkitContainerIndexer getContainerIndexer() {
         return containerIndexer;
     }
 

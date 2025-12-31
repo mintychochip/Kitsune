@@ -1,7 +1,7 @@
 package org.aincraft.kitsune.listener;
 
 import org.aincraft.kitsune.api.ContainerLocations;
-import org.aincraft.kitsune.indexing.ContainerIndexer;
+import org.aincraft.kitsune.indexing.BukkitContainerIndexer;
 import org.aincraft.kitsune.util.ContainerLocationResolver;
 import org.aincraft.kitsune.util.LocationConverter;
 import org.bukkit.Location;
@@ -12,10 +12,10 @@ import org.bukkit.event.inventory.InventoryMoveItemEvent;
 import org.bukkit.inventory.Inventory;
 
 public class HopperTransferListener implements Listener {
-    private final ContainerIndexer containerIndexer;
+    private final BukkitContainerIndexer containerIndexer;
     private final ContainerLocationResolver locationResolver;
 
-    public HopperTransferListener(ContainerIndexer containerIndexer, ContainerLocationResolver locationResolver) {
+    public HopperTransferListener(BukkitContainerIndexer containerIndexer, ContainerLocationResolver locationResolver) {
         this.containerIndexer = containerIndexer;
         this.locationResolver = locationResolver;
     }
