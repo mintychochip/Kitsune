@@ -10,7 +10,6 @@ import io.github.jbellis.jvector.graph.ListRandomAccessVectorValues;
 import io.github.jbellis.jvector.graph.SearchResult;
 import io.github.jbellis.jvector.graph.disk.OnDiskGraphIndex;
 import io.github.jbellis.jvector.graph.similarity.BuildScoreProvider;
-import io.github.jbellis.jvector.graph.similarity.DefaultSearchScoreProvider;
 import io.github.jbellis.jvector.graph.similarity.SearchScoreProvider;
 import io.github.jbellis.jvector.util.Bits;
 import io.github.jbellis.jvector.vector.VectorSimilarityFunction;
@@ -235,11 +234,11 @@ public class JVectorStorage implements VectorStorage {
             document.embedding(),
             document.timestamp()
         );
-        return indexContainerChunks(List.of(chunk));
+        return indexChunks(List.of(chunk));
     }
 
     @Override
-    public CompletableFuture<Void> indexChunks(List<IndexedChunk> chunks) {
+    public CompletableFuture<Void> indexChunks(List<ContainerChunk> chunks) {
         if (chunks.isEmpty()) {
             return CompletableFuture.completedFuture(null);
         }
@@ -252,7 +251,7 @@ public class JVectorStorage implements VectorStorage {
                 // Delete existing chunks for this location
                 deleteLocationChunks(loc);
 
-                // Insert new chunks with their pre-assigned UUIDs
+                // Insert new chunks - generate UUIDs for each
                 try (Connection conn = dataSource.getConnection()) {
                     String sql = """
                         INSERT INTO containers
@@ -260,8 +259,8 @@ public class JVectorStorage implements VectorStorage {
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """;
 
-                    for (IndexedChunk chunk : chunks) {
-                        UUID uuid = chunk.id();
+                    for (ContainerChunk chunk : chunks) {
+                        UUID uuid = UUID.randomUUID();
                         int ordinal = ordinalToUuid.size();
 
                         try (PreparedStatement stmt = conn.prepareStatement(sql)) {
@@ -275,12 +274,8 @@ public class JVectorStorage implements VectorStorage {
                             stmt.setString(8, chunk.contentText());
                             stmt.setBytes(9, serializeEmbedding(chunk.embedding()));
                             stmt.setLong(10, chunk.timestamp());
-                            // Insert container path as JSON, or null if root
-                            if (chunk.containerPath() != null) {
-                                stmt.setString(11, chunk.containerPath().toJson());
-                            } else {
-                                stmt.setNull(11, java.sql.Types.VARCHAR);
-                            }
+                            // ContainerChunk doesn't have containerPath, set to null
+                            stmt.setNull(11, java.sql.Types.VARCHAR);
                             stmt.executeUpdate();
                         }
 
@@ -378,7 +373,7 @@ public class JVectorStorage implements VectorStorage {
                 try (GraphSearcher searcher = new GraphSearcher(graphIndex)) {
                     // After compaction, vectors list has no nulls - use directly
                     ListRandomAccessVectorValues ravv = new ListRandomAccessVectorValues(vectors, dimension);
-                    SearchScoreProvider ssp = DefaultSearchScoreProvider.exact(
+                    SearchScoreProvider ssp = SearchScoreProvider.exact(
                         queryVector, VectorSimilarityFunction.COSINE, ravv
                     );
 
@@ -445,7 +440,7 @@ public class JVectorStorage implements VectorStorage {
 
                                         org.aincraft.kitsune.model.SearchResult newResult =
                                             new org.aincraft.kitsune.model.SearchResult(
-                                                loc, score, preview, fullContent, containerPath
+                                                loc, score, preview, fullContent
                                             );
                                         org.aincraft.kitsune.model.SearchResult existing =
                                             bestMatches.get(locationKey);
@@ -564,7 +559,9 @@ public class JVectorStorage implements VectorStorage {
 
             try (GraphIndexBuilder builder = new GraphIndexBuilder(
                     bsp, dimension, GRAPH_DEGREE, CONSTRUCTION_SEARCH_DEPTH,
-                    OVERFLOW_FACTOR, ALPHA, false, true)) {
+                    OVERFLOW_FACTOR, ALPHA,
+                    java.util.concurrent.ForkJoinPool.commonPool(),
+                    java.util.concurrent.ForkJoinPool.commonPool())) {
 
                 var index = builder.build(ravv);
 
@@ -587,7 +584,7 @@ public class JVectorStorage implements VectorStorage {
     }
 
     @Override
-    public CompletableFuture<Void> deleteByLocation(LocationData location) {
+    public CompletableFuture<Void> delete(LocationData location) {
         return CompletableFuture.runAsync(() -> {
             indexLock.writeLock().lock();
             try {
@@ -602,7 +599,6 @@ public class JVectorStorage implements VectorStorage {
         }, executor);
     }
 
-    @Override
     public CompletableFuture<Optional<IndexedChunk>> getById(UUID id) {
         return CompletableFuture.supplyAsync(() -> {
             indexLock.readLock().lock();
@@ -643,7 +639,6 @@ public class JVectorStorage implements VectorStorage {
         }, executor);
     }
 
-    @Override
     public CompletableFuture<Void> deleteById(UUID id) {
         return CompletableFuture.runAsync(() -> {
             indexLock.writeLock().lock();
@@ -678,7 +673,6 @@ public class JVectorStorage implements VectorStorage {
         }, executor);
     }
 
-    @Override
     public CompletableFuture<Void> updateEmbedding(UUID id, float[] newEmbedding) {
         return CompletableFuture.runAsync(() -> {
             indexLock.writeLock().lock();
@@ -706,7 +700,6 @@ public class JVectorStorage implements VectorStorage {
         }, executor);
     }
 
-    @Override
     public CompletableFuture<List<UUID>> getChunkIdsByLocation(LocationData location) {
         return CompletableFuture.supplyAsync(() -> {
             indexLock.readLock().lock();
@@ -752,7 +745,6 @@ public class JVectorStorage implements VectorStorage {
         }, executor);
     }
 
-    @Override
     public CompletableFuture<Void> purgeAll() {
         return CompletableFuture.runAsync(() -> {
             indexLock.writeLock().lock();

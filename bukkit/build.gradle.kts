@@ -4,6 +4,8 @@ plugins {
     id("xyz.jpenilla.run-paper")
 }
 
+version = rootProject.version
+
 dependencies {
     implementation(project(":common"))
 
