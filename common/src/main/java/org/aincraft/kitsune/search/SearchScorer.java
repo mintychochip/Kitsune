@@ -1,8 +1,10 @@
 package org.aincraft.kitsune.search;
 
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import org.aincraft.kitsune.model.SearchResult;
-
-import java.util.*;
 
 public class SearchScorer {
     private static final double KEYWORD_BOOST = 0.0; // Disabled - use pure semantic similarity

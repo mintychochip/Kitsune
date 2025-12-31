@@ -22,6 +22,9 @@ dependencies {
     // PostgreSQL driver (for Supabase)
     api("org.postgresql:postgresql:42.7.4")
 
+    // JVector for vector similarity search
+    api("io.github.jbellis:jvector:4.0.0-rc.6")
+
     testImplementation(platform("org.junit:junit-bom:5.10.0"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")

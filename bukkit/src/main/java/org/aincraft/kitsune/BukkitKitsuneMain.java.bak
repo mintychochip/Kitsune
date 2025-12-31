@@ -35,10 +35,10 @@ import org.bukkit.scheduler.BukkitTask;
 
 import java.util.concurrent.CompletableFuture;
 
-public final class KitsunePlugin extends JavaPlugin {
+public final class BukkitKitsuneMain extends JavaPlugin {
 
     private KitsuneConfig kitsuneConfig;
-    private KitsunePlugin platformPlugin;
+    private org.aincraft.kitsune.KitsunePlugin platformPlugin;
     private EmbeddingService embeddingService;
     private EmbeddingCache embeddingCache;
     private VectorStorage vectorStorage;

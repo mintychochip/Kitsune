@@ -1,9 +1,8 @@
 package org.aincraft.kitsune.api;
 
-import net.kyori.adventure.text.Component;
-
 import java.util.List;
 import java.util.Optional;
+import net.kyori.adventure.text.Component;
 
 /**
  * Represents an item that can be indexed and augmented with custom tags.

@@ -15,6 +15,15 @@ public class KitsuneConfig {
         return config.getString("embedding.provider", "onnx");
     }
 
+    public String getEmbeddingModel() {
+        String provider = getEmbeddingProvider();
+        return switch (provider) {
+            case "openai" -> getOpenAIModel();
+            case "google" -> getGoogleModel();
+            default -> "all-MiniLM-L6-v2"; // Default ONNX model
+        };
+    }
+
     public String getStorageProvider() {
         return config.getString("storage.provider", "sqlite");
     }

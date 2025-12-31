@@ -2,12 +2,9 @@ package org.aincraft.kitsune.embedding;
 
 import ai.djl.huggingface.tokenizers.Encoding;
 import ai.djl.huggingface.tokenizers.HuggingFaceTokenizer;
+import ai.onnxruntime.OnnxTensor;
 import ai.onnxruntime.OrtEnvironment;
 import ai.onnxruntime.OrtSession;
-import ai.onnxruntime.OnnxTensor;
-import org.aincraft.kitsune.logging.ChestFindLogger;
-import org.aincraft.kitsune.platform.DataFolderProvider;
-
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
@@ -15,6 +12,8 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import org.aincraft.kitsune.logging.ChestFindLogger;
+import org.aincraft.kitsune.platform.DataFolderProvider;
 
 public class OnnxEmbeddingService implements EmbeddingService {
     private final ChestFindLogger logger;

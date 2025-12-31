@@ -1,11 +1,11 @@
 package org.aincraft.kitsune.protection;
 
-import org.bukkit.Location;
-import org.bukkit.entity.Player;
+import java.util.UUID;
+import org.aincraft.kitsune.api.LocationData;
 
 public class NoOpProtectionProvider implements ProtectionProvider {
     @Override
-    public boolean canAccess(Player player, Location location) {
+    public boolean canAccess(UUID playerId, LocationData location) {
         return true;
     }
 }

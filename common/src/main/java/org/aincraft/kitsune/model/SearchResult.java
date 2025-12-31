@@ -1,9 +1,9 @@
 package org.aincraft.kitsune.model;
 
 import com.google.common.base.Preconditions;
+import java.util.List;
 import org.aincraft.kitsune.api.LocationData;
 import org.jetbrains.annotations.Nullable;
-import java.util.List;
 
 /**
  * Represents a search result for a container containing items of interest.
@@ -18,7 +18,7 @@ public record SearchResult(
     String fullContent,
     @Nullable ContainerPath containerPath
 ) {
-    // Constructor with all fields including containerPath
+    // Compact constructor with validation
     public SearchResult {
         Preconditions.checkNotNull(location, "Location cannot be null");
         Preconditions.checkNotNull(preview, "Preview cannot be null");
@@ -29,18 +29,6 @@ public record SearchResult(
         }
         // fullContent can be null for backwards compatibility
         // containerPath can be null for backwards compatibility
-    }
-
-    // Backwards compatible constructor with containerPath
-    public SearchResult(
-        LocationData location,
-        List<LocationData> allLocations,
-        double score,
-        String preview,
-        String fullContent,
-        @Nullable ContainerPath containerPath
-    ) {
-        this(location, allLocations, score, preview, fullContent, containerPath);
     }
 
     // Backwards compatible constructor without containerPath

@@ -2,14 +2,6 @@ package org.aincraft.kitsune.storage;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
-import org.aincraft.kitsune.api.ContainerLocations;
-import org.aincraft.kitsune.api.LocationData;
-import org.aincraft.kitsune.model.ContainerChunk;
-import org.aincraft.kitsune.model.ContainerDocument;
-import org.aincraft.kitsune.model.SearchResult;
-import org.aincraft.kitsune.model.StorageStats;
-import java.util.logging.Logger;
-
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
@@ -29,6 +21,13 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.logging.Level;
+import java.util.logging.Logger;
+import org.aincraft.kitsune.api.ContainerLocations;
+import org.aincraft.kitsune.api.LocationData;
+import org.aincraft.kitsune.model.ContainerChunk;
+import org.aincraft.kitsune.model.ContainerDocument;
+import org.aincraft.kitsune.model.SearchResult;
+import org.aincraft.kitsune.model.StorageStats;
 
 public class SqliteVectorStorage implements VectorStorage {
     private final Logger logger;

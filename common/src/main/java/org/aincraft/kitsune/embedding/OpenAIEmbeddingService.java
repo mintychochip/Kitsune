@@ -3,6 +3,9 @@ package org.aincraft.kitsune.embedding;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -10,10 +13,6 @@ import okhttp3.RequestBody;
 import okhttp3.Response;
 import org.aincraft.kitsune.config.KitsuneConfig;
 import org.aincraft.kitsune.logging.ChestFindLogger;
-
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
 
 public class OpenAIEmbeddingService implements EmbeddingService {
     private final ChestFindLogger logger;

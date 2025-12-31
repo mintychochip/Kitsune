@@ -1,15 +1,14 @@
 package org.aincraft.kitsune.storage;
 
+import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import org.aincraft.kitsune.api.ContainerLocations;
 import org.aincraft.kitsune.api.LocationData;
 import org.aincraft.kitsune.model.ContainerChunk;
 import org.aincraft.kitsune.model.ContainerDocument;
 import org.aincraft.kitsune.model.SearchResult;
 import org.aincraft.kitsune.model.StorageStats;
-
-import java.util.List;
-import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
 
 public interface VectorStorage {
     /**

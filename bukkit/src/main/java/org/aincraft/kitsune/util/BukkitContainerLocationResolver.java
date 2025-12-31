@@ -1,7 +1,7 @@
-package org.aincraft.chestfind.util;
+package org.aincraft.kitsune.util;
 
-import org.aincraft.chestfind.api.ContainerLocations;
-import org.aincraft.chestfind.api.LocationData;
+import org.aincraft.kitsune.api.ContainerLocations;
+import org.aincraft.kitsune.api.LocationData;
 import org.bukkit.block.Block;
 import org.bukkit.block.Chest;
 import org.bukkit.block.Container;

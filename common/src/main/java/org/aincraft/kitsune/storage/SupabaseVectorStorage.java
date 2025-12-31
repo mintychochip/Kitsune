@@ -3,15 +3,6 @@ package org.aincraft.kitsune.storage;
 import com.google.gson.Gson;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
-import org.aincraft.kitsune.api.ContainerLocations;
-import org.aincraft.kitsune.api.LocationData;
-import org.aincraft.kitsune.config.KitsuneConfig;
-import org.aincraft.kitsune.logging.ChestFindLogger;
-import org.aincraft.kitsune.model.ContainerChunk;
-import org.aincraft.kitsune.model.ContainerDocument;
-import org.aincraft.kitsune.model.SearchResult;
-import org.aincraft.kitsune.model.StorageStats;
-
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -23,6 +14,14 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import org.aincraft.kitsune.api.ContainerLocations;
+import org.aincraft.kitsune.api.LocationData;
+import org.aincraft.kitsune.config.KitsuneConfig;
+import org.aincraft.kitsune.logging.ChestFindLogger;
+import org.aincraft.kitsune.model.ContainerChunk;
+import org.aincraft.kitsune.model.ContainerDocument;
+import org.aincraft.kitsune.model.SearchResult;
+import org.aincraft.kitsune.model.StorageStats;
 
 public class SupabaseVectorStorage implements VectorStorage {
     private final ChestFindLogger logger;

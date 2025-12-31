@@ -10,7 +10,7 @@ import java.util.logging.Logger;
  * Bukkit implementation of the KitsunePlugin platform abstraction.
  * Provides a clean interface for the common module to interact with Bukkit.
  */
-public final class BukkitKitsunePlugin implements KitsunePlugin {
+public final class BukkitKitsunePlugin implements KitsunePlatform {
     private final JavaPlugin plugin;
     private final ConfigProvider config;
 

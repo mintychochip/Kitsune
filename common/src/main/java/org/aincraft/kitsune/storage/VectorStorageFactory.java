@@ -1,31 +1,35 @@
 package org.aincraft.kitsune.storage;
 
+import java.util.logging.Logger;
+import org.aincraft.kitsune.KitsunePlatform;
 import org.aincraft.kitsune.config.KitsuneConfig;
 import org.aincraft.kitsune.logging.ChestFindLogger;
-import org.aincraft.kitsune.platform.PlatformContext;
-
-import java.util.logging.Logger;
+import org.aincraft.kitsune.platform.DataFolderProvider;
 
 public class VectorStorageFactory {
     private VectorStorageFactory() {
     }
 
-    public static VectorStorage create(KitsuneConfig config, PlatformContext platform) {
+    public static VectorStorage create(KitsuneConfig config, KitsunePlatform plugin) {
+        return create(config, plugin, plugin);
+    }
+
+    public static VectorStorage create(KitsuneConfig config, ChestFindLogger logger, DataFolderProvider dataFolder) {
         String provider = config.getStorageProvider().toLowerCase();
 
         return switch (provider) {
-            case "supabase" -> new SupabaseVectorStorage(platform.logger(), config);
+            case "supabase" -> new SupabaseVectorStorage(logger, config);
             case "sqlite" -> {
                 // SqliteVectorStorage uses java.util.logging.Logger
                 // Create an adapter that delegates to ChestFindLogger
-                Logger julLogger = createJulLoggerAdapter(platform.logger());
-                String dbPath = platform.dataFolder().getDataFolder().resolve(config.getSqlitePath()).toString();
+                Logger julLogger = createJulLoggerAdapter(logger);
+                String dbPath = dataFolder.getDataFolder().resolve(config.getSqlitePath()).toString();
                 yield new SqliteVectorStorage(julLogger, dbPath);
             }
             default -> {
-                platform.logger().warning("Unknown storage provider: " + provider + ", using SQLite");
-                Logger julLogger = createJulLoggerAdapter(platform.logger());
-                String dbPath = platform.dataFolder().getDataFolder().resolve(config.getSqlitePath()).toString();
+                logger.warning("Unknown storage provider: " + provider + ", using SQLite");
+                Logger julLogger = createJulLoggerAdapter(logger);
+                String dbPath = dataFolder.getDataFolder().resolve(config.getSqlitePath()).toString();
                 yield new SqliteVectorStorage(julLogger, dbPath);
             }
         };

@@ -10,17 +10,10 @@ import io.github.jbellis.jvector.graph.ListRandomAccessVectorValues;
 import io.github.jbellis.jvector.graph.SearchResult;
 import io.github.jbellis.jvector.graph.disk.OnDiskGraphIndex;
 import io.github.jbellis.jvector.graph.similarity.BuildScoreProvider;
-import io.github.jbellis.jvector.graph.similarity.SearchScoreProvider;
+import io.github.jbellis.jvector.graph.similarity.DefaultSearchScoreProvider;
 import io.github.jbellis.jvector.util.Bits;
 import io.github.jbellis.jvector.vector.VectorSimilarityFunction;
 import io.github.jbellis.jvector.vector.types.VectorFloat;
-import org.aincraft.kitsune.api.LocationData;
-import org.aincraft.kitsune.model.ContainerChunk;
-import org.aincraft.kitsune.model.ContainerDocument;
-import org.aincraft.kitsune.model.ContainerPath;
-import org.aincraft.kitsune.model.IndexedChunk;
-import org.aincraft.kitsune.model.StorageStats;
-
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
@@ -46,6 +39,13 @@ import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import org.aincraft.kitsune.api.ContainerLocations;
+import org.aincraft.kitsune.api.LocationData;
+import org.aincraft.kitsune.model.ContainerChunk;
+import org.aincraft.kitsune.model.ContainerDocument;
+import org.aincraft.kitsune.model.ContainerPath;
+import org.aincraft.kitsune.model.IndexedChunk;
+import org.aincraft.kitsune.model.StorageStats;
 
 /**
  * Vector storage implementation using JVector for ANN search.
@@ -373,7 +373,7 @@ public class JVectorStorage implements VectorStorage {
                 try (GraphSearcher searcher = new GraphSearcher(graphIndex)) {
                     // After compaction, vectors list has no nulls - use directly
                     ListRandomAccessVectorValues ravv = new ListRandomAccessVectorValues(vectors, dimension);
-                    SearchScoreProvider ssp = SearchScoreProvider.exact(
+                    DefaultSearchScoreProvider ssp = DefaultSearchScoreProvider.exact(
                         queryVector, VectorSimilarityFunction.COSINE, ravv
                     );
 
@@ -560,8 +560,7 @@ public class JVectorStorage implements VectorStorage {
             try (GraphIndexBuilder builder = new GraphIndexBuilder(
                     bsp, dimension, GRAPH_DEGREE, CONSTRUCTION_SEARCH_DEPTH,
                     OVERFLOW_FACTOR, ALPHA,
-                    java.util.concurrent.ForkJoinPool.commonPool(),
-                    java.util.concurrent.ForkJoinPool.commonPool())) {
+                    false)) { // addHierarchy
 
                 var index = builder.build(ravv);
 
@@ -837,5 +836,33 @@ public class JVectorStorage implements VectorStorage {
         } catch (IOException e) {
             throw new RuntimeException("Failed to deserialize embedding", e);
         }
+    }
+
+    @Override
+    public CompletableFuture<Void> registerContainerPositions(ContainerLocations locations) {
+        // JVectorStorage doesn't track multi-block container positions
+        // This is a no-op for this implementation
+        return CompletableFuture.completedFuture(null);
+    }
+
+    @Override
+    public CompletableFuture<Optional<LocationData>> getPrimaryLocation(LocationData anyPosition) {
+        // JVectorStorage doesn't track multi-block container positions
+        // Return the input position as-is (assumes all positions are primary)
+        return CompletableFuture.completedFuture(Optional.of(anyPosition));
+    }
+
+    @Override
+    public CompletableFuture<List<LocationData>> getAllPositions(LocationData primaryLocation) {
+        // JVectorStorage doesn't track multi-block container positions
+        // Return just the primary location
+        return CompletableFuture.completedFuture(Collections.singletonList(primaryLocation));
+    }
+
+    @Override
+    public CompletableFuture<Void> deleteContainerPositions(LocationData primaryLocation) {
+        // JVectorStorage doesn't track multi-block container positions
+        // This is a no-op for this implementation
+        return CompletableFuture.completedFuture(null);
     }
 }

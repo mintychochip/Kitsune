@@ -1,10 +1,9 @@
 package org.aincraft.kitsune.model;
 
 import com.google.common.base.Preconditions;
+import java.util.UUID;
 import org.aincraft.kitsune.api.LocationData;
 import org.jetbrains.annotations.Nullable;
-
-import java.util.UUID;
 
 /**
  * Represents an indexed container chunk with an explicit application-generated UUID.

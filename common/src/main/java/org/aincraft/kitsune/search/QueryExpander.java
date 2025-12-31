@@ -1,6 +1,10 @@
 package org.aincraft.kitsune.search;
 
-import java.util.*;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 public class QueryExpander {
 

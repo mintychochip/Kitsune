@@ -28,6 +28,6 @@ public class KitsuneBootstrap implements PluginBootstrap {
     public @NotNull JavaPlugin createPlugin(@NotNull PluginProviderContext context) {
         // Create and return the main plugin instance
         // This allows passing bootstrap context to the plugin if needed
-        return new KitsunePlugin();
+        return new BukkitKitsuneMain();
     }
 }
