@@ -4,7 +4,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 import org.aincraft.kitsune.api.ContainerLocations;
-import org.aincraft.kitsune.indexing.ContainerIndexer;
+import org.aincraft.kitsune.indexing.BukkitContainerIndexer;
 import org.aincraft.kitsune.util.ContainerLocationResolver;
 import org.aincraft.kitsune.util.LocationConverter;
 import org.bukkit.Location;
@@ -19,10 +19,10 @@ import org.bukkit.inventory.ItemStack;
 public class ContainerCloseListener implements Listener {
     private final Map<UUID, ContainerSnapshot> openContainers = new HashMap<>();
 
-    private final ContainerIndexer containerIndexer;
+    private final BukkitContainerIndexer containerIndexer;
     private final ContainerLocationResolver locationResolver;
 
-    public ContainerCloseListener(ContainerIndexer containerIndexer, ContainerLocationResolver locationResolver) {
+    public ContainerCloseListener(BukkitContainerIndexer containerIndexer, ContainerLocationResolver locationResolver) {
         this.containerIndexer = containerIndexer;
         this.locationResolver = locationResolver;
     }
