@@ -4,7 +4,7 @@ import org.aincraft.kitsune.api.ContainerLocations;
 import org.aincraft.kitsune.api.Location;
 import org.aincraft.kitsune.config.KitsuneConfig;
 import org.aincraft.kitsune.embedding.EmbeddingService;
-import org.aincraft.kitsune.logging.ChestFindLogger;
+import java.util.logging.Logger;
 import org.aincraft.kitsune.storage.VectorStorage;
 import org.aincraft.kitsune.util.LocationConverter;
 import org.bukkit.block.Container;
@@ -30,7 +30,7 @@ public class BukkitContainerIndexer extends ContainerIndexer {
     private final Map<org.bukkit.Location, ScheduledFuture<?>> pendingLocationIndexes = new HashMap<>();
     private final int debounceDelayMs;
 
-    public BukkitContainerIndexer(ChestFindLogger logger, EmbeddingService embeddingService,
+    public BukkitContainerIndexer(Logger logger, EmbeddingService embeddingService,
                                    VectorStorage vectorStorage, KitsuneConfig config) {
         super(logger, embeddingService, vectorStorage, config);
         this.debounceDelayMs = config.getDebounceDelayMs();

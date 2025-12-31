@@ -4,80 +4,34 @@ import java.nio.file.Path;
 import java.util.logging.Logger;
 import org.aincraft.kitsune.KitsunePlatform;
 import org.aincraft.kitsune.config.KitsuneConfig;
-import org.aincraft.kitsune.logging.ChestFindLogger;
 
 public class VectorStorageFactory {
     private VectorStorageFactory() {
     }
 
     public static VectorStorage create(KitsuneConfig config, KitsunePlatform plugin) {
-        return create(config, plugin, plugin);
+        return create(config, plugin.getLogger(), plugin);
     }
 
-    public static VectorStorage create(KitsuneConfig config, ChestFindLogger logger, KitsunePlatform dataFolder) {
+    public static VectorStorage create(KitsuneConfig config, Logger logger, KitsunePlatform dataFolder) {
         String provider = config.getStorageProvider().toLowerCase();
 
         return switch (provider) {
             case "supabase" -> new SupabaseVectorStorage(logger, config);
             case "sqlite" -> {
-                // SqliteVectorStorage uses java.util.logging.Logger
-                // Create an adapter that delegates to ChestFindLogger
-                Logger julLogger = createJulLoggerAdapter(logger);
                 String dbPath = dataFolder.getDataFolder().resolve(config.getSqlitePath()).toString();
-                yield new SqliteVectorStorage(julLogger, dbPath);
+                yield new SqliteVectorStorage(logger, dbPath);
             }
             case "jvector" -> {
-                // JVectorStorage uses java.util.logging.Logger
-                // Create an adapter that delegates to ChestFindLogger
-                Logger julLogger = createJulLoggerAdapter(logger);
                 Path dataDir = dataFolder.getDataFolder();
                 int dimension = config.getEmbeddingDimension();
-                yield new JVectorStorage(julLogger, dataDir, dimension);
+                yield new JVectorStorage(logger, dataDir, dimension);
             }
             default -> {
                 logger.warning("Unknown storage provider: " + provider + ", using SQLite");
-                Logger julLogger = createJulLoggerAdapter(logger);
                 String dbPath = dataFolder.getDataFolder().resolve(config.getSqlitePath()).toString();
-                yield new SqliteVectorStorage(julLogger, dbPath);
+                yield new SqliteVectorStorage(logger, dbPath);
             }
         };
-    }
-
-    /**
-     * Creates a java.util.logging.Logger adapter that delegates to ChestFindLogger.
-     */
-    private static Logger createJulLoggerAdapter(ChestFindLogger kitsuneLogger) {
-        Logger julLogger = Logger.getLogger("ChestFind.Storage");
-        julLogger.setUseParentHandlers(false);
-        julLogger.addHandler(new java.util.logging.Handler() {
-            @Override
-            public void publish(java.util.logging.LogRecord record) {
-                String message = record.getMessage();
-                Throwable thrown = record.getThrown();
-
-                if (record.getLevel().intValue() >= java.util.logging.Level.SEVERE.intValue()) {
-                    if (thrown != null) {
-                        kitsuneLogger.log(ChestFindLogger.LogLevel.SEVERE, message, thrown);
-                    } else {
-                        kitsuneLogger.severe(message);
-                    }
-                } else if (record.getLevel().intValue() >= java.util.logging.Level.WARNING.intValue()) {
-                    if (thrown != null) {
-                        kitsuneLogger.log(ChestFindLogger.LogLevel.WARNING, message, thrown);
-                    } else {
-                        kitsuneLogger.warning(message);
-                    }
-                } else {
-                    kitsuneLogger.info(message);
-                }
-            }
-
-            @Override
-            public void flush() {}
-
-            @Override
-            public void close() throws SecurityException {}
-        });
-        return julLogger;
     }
 }

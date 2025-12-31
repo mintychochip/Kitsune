@@ -14,24 +14,25 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import org.aincraft.kitsune.api.ContainerLocations;
 import org.aincraft.kitsune.api.Location;
 import org.aincraft.kitsune.config.KitsuneConfig;
-import org.aincraft.kitsune.logging.ChestFindLogger;
 import org.aincraft.kitsune.model.ContainerChunk;
 import org.aincraft.kitsune.model.ContainerDocument;
 import org.aincraft.kitsune.model.SearchResult;
 import org.aincraft.kitsune.model.StorageStats;
 
 public class SupabaseVectorStorage implements VectorStorage {
-    private final ChestFindLogger logger;
+    private final Logger logger;
     private final KitsuneConfig config;
     private final ScheduledExecutorService executor = Executors.newScheduledThreadPool(4);
     private final Gson gson = new Gson();
     private HikariDataSource dataSource;
     private final String tableName;
 
-    public SupabaseVectorStorage(ChestFindLogger logger, KitsuneConfig config) {
+    public SupabaseVectorStorage(Logger logger, KitsuneConfig config) {
         this.logger = logger;
         this.config = config;
         this.tableName = config.getSupabaseTable();
@@ -116,7 +117,7 @@ public class SupabaseVectorStorage implements VectorStorage {
 
                 logger.info("Supabase vector storage initialized");
             } catch (Exception e) {
-                logger.log(ChestFindLogger.LogLevel.SEVERE, "Failed to initialize Supabase storage", e);
+                logger.log(Level.SEVERE, "Failed to initialize Supabase storage", e);
                 throw new RuntimeException("Supabase initialization failed", e);
             }
         }, executor);
@@ -147,7 +148,7 @@ public class SupabaseVectorStorage implements VectorStorage {
                     stmt.executeUpdate();
                 }
             } catch (SQLException e) {
-                logger.log(ChestFindLogger.LogLevel.WARNING, "Failed to index container", e);
+                logger.log(Level.WARNING, "Failed to index container", e);
                 throw new RuntimeException("Indexing failed", e);
             }
         }, executor);
@@ -193,7 +194,7 @@ public class SupabaseVectorStorage implements VectorStorage {
                     stmt.executeBatch();
                 }
             } catch (SQLException e) {
-                logger.log(ChestFindLogger.LogLevel.WARNING, "Failed to index chunks", e);
+                logger.log(Level.WARNING, "Failed to index chunks", e);
                 throw new RuntimeException("Chunk indexing failed", e);
             }
         }, executor);
@@ -267,7 +268,7 @@ public class SupabaseVectorStorage implements VectorStorage {
                 Collections.sort(results, (a, b) -> Double.compare(b.score(), a.score()));
                 return results.subList(0, Math.min(limit, results.size()));
             } catch (SQLException e) {
-                logger.log(ChestFindLogger.LogLevel.WARNING, "Search failed", e);
+                logger.log(Level.WARNING, "Search failed", e);
                 return Collections.emptyList();
             }
         }, executor);
@@ -290,7 +291,7 @@ public class SupabaseVectorStorage implements VectorStorage {
                     stmt.executeUpdate();
                 }
             } catch (SQLException e) {
-                logger.log(ChestFindLogger.LogLevel.WARNING, "Failed to delete container", e);
+                logger.log(Level.WARNING, "Failed to delete container", e);
                 throw new RuntimeException("Deletion failed", e);
             }
         }, executor);
@@ -308,7 +309,7 @@ public class SupabaseVectorStorage implements VectorStorage {
                     }
                 }
             } catch (SQLException e) {
-                logger.log(ChestFindLogger.LogLevel.WARNING, "Failed to get stats", e);
+                logger.log(Level.WARNING, "Failed to get stats", e);
             }
             return new StorageStats(0, "Supabase");
         }, executor);
@@ -321,7 +322,7 @@ public class SupabaseVectorStorage implements VectorStorage {
                 conn.createStatement().execute("DELETE FROM " + tableName);
                 logger.info("Purged all vectors from Supabase storage");
             } catch (SQLException e) {
-                logger.log(ChestFindLogger.LogLevel.SEVERE, "Failed to purge all vectors", e);
+                logger.log(Level.SEVERE, "Failed to purge all vectors", e);
                 throw new RuntimeException("Purge failed", e);
             }
         }, executor);
@@ -371,7 +372,7 @@ public class SupabaseVectorStorage implements VectorStorage {
                     stmt.executeBatch();
                 }
             } catch (SQLException e) {
-                logger.log(ChestFindLogger.LogLevel.WARNING, "Failed to register container positions", e);
+                logger.log(Level.WARNING, "Failed to register container positions", e);
                 throw new RuntimeException("Position registration failed", e);
             }
         }, executor);
@@ -408,7 +409,7 @@ public class SupabaseVectorStorage implements VectorStorage {
                 // If not found in mapping, return the input position (single-block case)
                 return Optional.of(anyPosition);
             } catch (SQLException e) {
-                logger.log(ChestFindLogger.LogLevel.WARNING, "Failed to get primary location", e);
+                logger.log(Level.WARNING, "Failed to get primary location", e);
                 return Optional.of(anyPosition);
             }
         }, executor);
@@ -450,7 +451,7 @@ public class SupabaseVectorStorage implements VectorStorage {
                 }
                 return positions;
             } catch (SQLException e) {
-                logger.log(ChestFindLogger.LogLevel.WARNING, "Failed to get all positions", e);
+                logger.log(Level.WARNING, "Failed to get all positions", e);
                 return List.of(primaryLocation);
             }
         }, executor);
@@ -473,7 +474,7 @@ public class SupabaseVectorStorage implements VectorStorage {
                     stmt.executeUpdate();
                 }
             } catch (SQLException e) {
-                logger.log(ChestFindLogger.LogLevel.WARNING, "Failed to delete container positions", e);
+                logger.log(Level.WARNING, "Failed to delete container positions", e);
                 throw new RuntimeException("Position deletion failed", e);
             }
         }, executor);

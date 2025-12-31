@@ -6,16 +6,17 @@ import com.google.gson.JsonObject;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
 import org.aincraft.kitsune.config.KitsuneConfig;
-import org.aincraft.kitsune.logging.ChestFindLogger;
 
 public class OpenAIEmbeddingService implements EmbeddingService {
-    private final ChestFindLogger logger;
+    private final Logger logger;
     private final KitsuneConfig config;
     private final OkHttpClient httpClient;
     private final Gson gson = new Gson();
@@ -23,7 +24,7 @@ public class OpenAIEmbeddingService implements EmbeddingService {
     private static final String OPENAI_API_URL = "https://api.openai.com/v1/embeddings";
     private static final MediaType JSON = MediaType.get("application/json; charset=utf-8");
 
-    public OpenAIEmbeddingService(ChestFindLogger logger, KitsuneConfig config) {
+    public OpenAIEmbeddingService(Logger logger, KitsuneConfig config) {
         this.logger = logger;
         this.config = config;
         this.httpClient = new OkHttpClient();
@@ -87,7 +88,7 @@ public class OpenAIEmbeddingService implements EmbeddingService {
                     return result;
                 }
             } catch (Exception e) {
-                logger.log(ChestFindLogger.LogLevel.WARNING, "Failed to embed text with OpenAI", e);
+                logger.log(Level.WARNING, "Failed to embed text with OpenAI", e);
                 throw new RuntimeException("OpenAI embedding failed", e);
             }
         }, executor);

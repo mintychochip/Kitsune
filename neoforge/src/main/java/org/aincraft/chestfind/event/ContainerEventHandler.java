@@ -3,12 +3,12 @@ package org.aincraft.chestfind.event;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.logging.Logger;
 import net.minecraft.world.Container;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerContainerEvent;
-import org.aincraft.chestfind.logging.ChestFindLogger;
 import org.aincraft.chestfind.storage.VectorStorage;
 
 /**
@@ -17,11 +17,11 @@ import org.aincraft.chestfind.storage.VectorStorage;
  * Single responsibility: event handling and state tracking.
  */
 public class ContainerEventHandler {
-    private final ChestFindLogger logger;
+    private final Logger logger;
     private final VectorStorage vectorStorage;
     private final Map<UUID, ContainerSnapshot> openContainers = new HashMap<>();
 
-    public ContainerEventHandler(ChestFindLogger logger, VectorStorage vectorStorage) {
+    public ContainerEventHandler(Logger logger, VectorStorage vectorStorage) {
         this.logger = logger;
         this.vectorStorage = vectorStorage;
     }

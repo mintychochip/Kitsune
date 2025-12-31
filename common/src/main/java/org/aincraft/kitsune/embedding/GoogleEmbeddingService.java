@@ -8,15 +8,16 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
-import org.aincraft.kitsune.logging.ChestFindLogger;
 
 public class GoogleEmbeddingService implements EmbeddingService {
-    private final ChestFindLogger logger;
+    private final Logger logger;
     private final String apiKey;
     private final String model;
     private final ScheduledExecutorService executor = Executors.newScheduledThreadPool(2);
@@ -25,7 +26,7 @@ public class GoogleEmbeddingService implements EmbeddingService {
 
     private static final String GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/%s:embedContent";
 
-    public GoogleEmbeddingService(ChestFindLogger logger, String apiKey, String model) {
+    public GoogleEmbeddingService(Logger logger, String apiKey, String model) {
         this.logger = logger;
         this.apiKey = apiKey;
         // Use the stable model by default
@@ -114,7 +115,7 @@ public class GoogleEmbeddingService implements EmbeddingService {
                     return result;
                 }
             } catch (IOException e) {
-                logger.log(ChestFindLogger.LogLevel.WARNING, "Failed to call Google API", e);
+                logger.log(Level.WARNING, "Failed to call Google API", e);
                 throw new RuntimeException("Embedding failed", e);
             }
         }, executor);

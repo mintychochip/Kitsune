@@ -4,7 +4,6 @@ import org.aincraft.kitsune.KitsunePlatform;
 import org.aincraft.kitsune.cache.EmbeddingCache;
 import org.aincraft.kitsune.cache.SqliteEmbeddingCache;
 import org.aincraft.kitsune.config.KitsuneConfig;
-import org.aincraft.kitsune.logging.ChestFindLogger;
 
 import java.util.logging.Logger;
 
@@ -13,10 +12,10 @@ public class EmbeddingServiceFactory {
     }
 
     public static EmbeddingService create(KitsuneConfig config, KitsunePlatform plugin) {
-        return create(config, plugin, plugin);
+        return create(config, plugin.getLogger(), plugin);
     }
 
-    public static EmbeddingService create(KitsuneConfig config, ChestFindLogger logger, KitsunePlatform dataFolder) {
+    public static EmbeddingService create(KitsuneConfig config, Logger logger, KitsunePlatform dataFolder) {
         String provider = config.getEmbeddingProvider().toLowerCase();
 
         EmbeddingService baseService = switch (provider) {
@@ -33,9 +32,8 @@ public class EmbeddingServiceFactory {
         };
 
         // Create cache
-        Logger cacheLogger = Logger.getLogger("Kitsune.EmbeddingCache");
         String cachePath = dataFolder.getDataFolder().resolve("embedding_cache.db").toString();
-        EmbeddingCache cache = new SqliteEmbeddingCache(cacheLogger, cachePath);
+        EmbeddingCache cache = new SqliteEmbeddingCache(logger, cachePath);
 
         return new CachedEmbeddingService(baseService, cache);
     }

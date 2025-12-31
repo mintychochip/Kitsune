@@ -96,7 +96,7 @@ public final class BukkitKitsuneMain extends JavaPlugin {
 
             // Create ContainerIndexer
             this.containerIndexer = new BukkitContainerIndexer(
-                platformPlugin,
+                getLogger(),
                 embeddingService,
                 vectorStorage,
                 kitsuneConfig

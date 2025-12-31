@@ -12,12 +12,13 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import org.aincraft.kitsune.config.KitsuneConfig;
-import org.aincraft.kitsune.logging.ChestFindLogger;
 import org.aincraft.kitsune.KitsunePlatform;
 
 public class OnnxEmbeddingService implements EmbeddingService {
-    private final ChestFindLogger logger;
+    private final Logger logger;
     private final KitsunePlatform dataFolderProvider;
     private final ScheduledExecutorService executor = Executors.newScheduledThreadPool(2);
     private OrtEnvironment env;
@@ -28,7 +29,7 @@ public class OnnxEmbeddingService implements EmbeddingService {
     private final int embeddingDim;
     private static final int MAX_SEQUENCE_LENGTH = 512;
 
-    public OnnxEmbeddingService(KitsuneConfig config, ChestFindLogger logger, KitsunePlatform dataFolderProvider) {
+    public OnnxEmbeddingService(KitsuneConfig config, Logger logger, KitsunePlatform dataFolderProvider) {
         this.logger = logger;
         this.dataFolderProvider = dataFolderProvider;
         this.modelName = config.getOnnxModel();
@@ -77,7 +78,7 @@ public class OnnxEmbeddingService implements EmbeddingService {
                 logger.info("ONNX embedding service initialized with " + modelName + " (" + embeddingDim + " dimensions)");
                 return null;
             } catch (Exception e) {
-                logger.log(ChestFindLogger.LogLevel.SEVERE, "Failed to initialize ONNX session", e);
+                logger.log(Level.SEVERE, "Failed to initialize ONNX session", e);
                 throw new RuntimeException("ONNX initialization failed", e);
             }
         }, executor);
@@ -134,7 +135,7 @@ public class OnnxEmbeddingService implements EmbeddingService {
                     return embedding;
                 }
             } catch (Exception e) {
-                logger.log(ChestFindLogger.LogLevel.WARNING, "Failed to embed text", e);
+                logger.log(Level.WARNING, "Failed to embed text", e);
                 throw new RuntimeException("Embedding failed", e);
             }
         }, executor);
@@ -186,7 +187,7 @@ public class OnnxEmbeddingService implements EmbeddingService {
             try {
                 session.close();
             } catch (Exception e) {
-                logger.log(ChestFindLogger.LogLevel.WARNING, "Failed to close ONNX session", e);
+                logger.log(Level.WARNING, "Failed to close ONNX session", e);
             }
         }
         if (env != null) {

@@ -4,7 +4,6 @@ import org.aincraft.kitsune.api.ContainerLocations;
 import org.aincraft.kitsune.api.Location;
 import org.aincraft.kitsune.config.KitsuneConfig;
 import org.aincraft.kitsune.embedding.EmbeddingService;
-import org.aincraft.kitsune.logging.ChestFindLogger;
 import org.aincraft.kitsune.model.ContainerChunk;
 import org.aincraft.kitsune.storage.VectorStorage;
 
@@ -17,6 +16,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * Core platform-agnostic container indexing service.
@@ -27,7 +28,7 @@ import java.util.concurrent.TimeUnit;
  * via the ContainerScanner interface.
  */
 public class ContainerIndexer {
-    private final ChestFindLogger logger;
+    private final Logger logger;
     private final EmbeddingService embeddingService;
     private final VectorStorage vectorStorage;
     private final KitsuneConfig config;
@@ -35,7 +36,7 @@ public class ContainerIndexer {
     private final Map<Location, ScheduledFuture<?>> pendingIndexes = new HashMap<>();
     private final int debounceDelayMs;
 
-    public ContainerIndexer(ChestFindLogger logger, EmbeddingService embeddingService,
+    public ContainerIndexer(Logger logger, EmbeddingService embeddingService,
                           VectorStorage vectorStorage, KitsuneConfig config) {
         this.logger = logger;
         this.embeddingService = embeddingService;
@@ -56,7 +57,7 @@ public class ContainerIndexer {
 
         // Register container position mappings (async)
         vectorStorage.registerContainerPositions(locations).exceptionally(ex -> {
-            logger.log(ChestFindLogger.LogLevel.WARNING,
+            logger.log(Level.WARNING,
                 "Failed to register container positions at " + primaryLocation, ex);
             return null;
         });
@@ -88,7 +89,7 @@ public class ContainerIndexer {
 
         if (serializedItems.isEmpty()) {
             vectorStorage.delete(location).exceptionally(ex -> {
-                logger.log(ChestFindLogger.LogLevel.WARNING, "Failed to delete empty container", ex);
+                logger.log(Level.WARNING, "Failed to delete empty container", ex);
                 return null;
             });
             return;
@@ -130,7 +131,7 @@ public class ContainerIndexer {
                     try {
                         chunks.add(future.get());
                     } catch (Exception e) {
-                        logger.log(ChestFindLogger.LogLevel.WARNING, "Failed to get chunk embedding", e);
+                        logger.log(Level.WARNING, "Failed to get chunk embedding", e);
                     }
                 }
                 return chunks;
@@ -142,7 +143,7 @@ public class ContainerIndexer {
                 }
             })
             .exceptionally(ex -> {
-                logger.log(ChestFindLogger.LogLevel.WARNING, "Failed to index container at " + location, ex);
+                logger.log(Level.WARNING, "Failed to index container at " + location, ex);
                 return null;
             });
     }

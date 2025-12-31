@@ -11,20 +11,17 @@ import net.neoforged.neoforge.event.server.ServerStartingEvent;
 import net.neoforged.neoforge.event.server.ServerStoppingEvent;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.neoforged.fml.loading.FMLPaths;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import java.util.logging.Logger;
 
 import org.aincraft.chestfind.config.ChestFindConfig;
 import org.aincraft.chestfind.embedding.EmbeddingService;
 import org.aincraft.chestfind.embedding.EmbeddingServiceFactory;
-import org.aincraft.chestfind.logging.ChestFindLogger;
 import org.aincraft.chestfind.platform.DataFolderProvider;
 import org.aincraft.chestfind.platform.PlatformContext;
 import org.aincraft.chestfind.storage.VectorStorage;
 import org.aincraft.chestfind.storage.VectorStorageFactory;
 import org.aincraft.chestfind.config.ConfigProvider;
 
-import org.aincraft.chestfind.logging.NeoForgeLogger;
 import org.aincraft.chestfind.config.NeoForgeConfigProvider;
 import org.aincraft.chestfind.platform.NeoForgeDataFolderProvider;
 import org.aincraft.chestfind.event.ContainerEventHandler;
@@ -42,12 +39,12 @@ import org.aincraft.chestfind.listener.ItemTransferHandler;
 @Mod("chestfind")
 public class ChestFindMod {
     public static final String MODID = "chestfind";
-    private static final Logger LOGGER = LoggerFactory.getLogger(ChestFindMod.class);
+    private static final Logger LOGGER = Logger.getLogger("ChestFind");
 
     // Shared state for services (initialized once on server start)
     private static EmbeddingService embeddingService;
     private static VectorStorage vectorStorage;
-    private static ChestFindLogger logger;
+    private static Logger logger;
     private static ContainerIndexer containerIndexer;
     private static ChestFindConfig chestFindConfig;
     private static boolean initialized = false;
@@ -73,7 +70,7 @@ public class ChestFindMod {
         LOGGER.info("ChestFind initializing services on server start...");
 
         // Create platform context with NeoForge adapters
-        logger = new NeoForgeLogger(LOGGER);
+        logger = Logger.getLogger("ChestFind");
         ConfigProvider configProvider = new NeoForgeConfigProvider(MODID);
         DataFolderProvider dataFolder = new NeoForgeDataFolderProvider(MODID);
 
@@ -106,7 +103,7 @@ public class ChestFindMod {
                 logger.info("ChestFind event handlers registered");
             })
             .exceptionally(ex -> {
-                logger.log(ChestFindLogger.LogLevel.SEVERE, "Failed to initialize ChestFind services", ex);
+                logger.log(java.util.logging.Level.SEVERE, "Failed to initialize ChestFind services", ex);
                 return null;
             });
     }
@@ -135,7 +132,7 @@ public class ChestFindMod {
         return vectorStorage;
     }
 
-    public static ChestFindLogger getLogger() {
+    public static Logger getLogger() {
         return logger;
     }
 

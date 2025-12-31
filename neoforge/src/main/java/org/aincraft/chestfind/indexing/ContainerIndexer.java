@@ -6,7 +6,6 @@ import net.minecraft.world.item.ItemStack;
 import org.aincraft.chestfind.api.LocationData;
 import org.aincraft.chestfind.config.ChestFindConfig;
 import org.aincraft.chestfind.embedding.EmbeddingService;
-import org.aincraft.chestfind.logging.ChestFindLogger;
 import org.aincraft.chestfind.model.ContainerChunk;
 import org.aincraft.chestfind.storage.VectorStorage;
 import org.aincraft.chestfind.util.LocationConverter;
@@ -20,13 +19,15 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  * Manages debounced indexing of container contents.
  * Prevents excessive indexing during rapid item changes by batching updates.
  */
 public class ContainerIndexer {
-    private final ChestFindLogger logger;
+    private final Logger logger;
     private final EmbeddingService embeddingService;
     private final VectorStorage vectorStorage;
     private final ChestFindConfig config;
@@ -34,7 +35,7 @@ public class ContainerIndexer {
     private final Map<String, ScheduledFuture<?>> pendingIndexes = new HashMap<>();
     private final int debounceDelayMs;
 
-    public ContainerIndexer(ChestFindLogger logger, EmbeddingService embeddingService,
+    public ContainerIndexer(Logger logger, EmbeddingService embeddingService,
                           VectorStorage vectorStorage, ChestFindConfig config) {
         this.logger = logger;
         this.embeddingService = embeddingService;
@@ -83,7 +84,7 @@ public class ContainerIndexer {
         if (serializedItems.isEmpty()) {
             // Delete empty container from index
             vectorStorage.delete(location).exceptionally(ex -> {
-                logger.log(ChestFindLogger.LogLevel.WARNING, "Failed to delete empty container", ex);
+                logger.log(Level.WARNING, "Failed to delete empty container", ex);
                 return null;
             });
             return;
@@ -125,7 +126,7 @@ public class ContainerIndexer {
                     try {
                         chunks.add(future.get());
                     } catch (Exception e) {
-                        logger.log(ChestFindLogger.LogLevel.WARNING, "Failed to get chunk embedding", e);
+                        logger.log(Level.WARNING, "Failed to get chunk embedding", e);
                     }
                 }
                 return chunks;
@@ -137,7 +138,7 @@ public class ContainerIndexer {
                 }
             })
             .exceptionally(ex -> {
-                logger.log(ChestFindLogger.LogLevel.WARNING, "Failed to index container at " + location, ex);
+                logger.log(Level.WARNING, "Failed to index container at " + location, ex);
                 return null;
             });
     }
