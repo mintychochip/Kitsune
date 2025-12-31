@@ -17,6 +17,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -508,5 +509,43 @@ public class SqliteVectorStorage implements VectorStorage {
         }
 
         return dotProduct / denominator;
+    }
+
+    @Override
+    public CompletableFuture<Void> indexChunks(UUID containerId, List<ContainerChunk> chunks) {
+        // Stub implementation for SqliteVectorStorage
+        return CompletableFuture.completedFuture(null);
+    }
+
+    // Phase 2-3: Container management API implementations
+
+    @Override
+    public CompletableFuture<UUID> getOrCreateContainer(ContainerLocations locations) {
+        // Stub implementation for SqliteVectorStorage
+        return CompletableFuture.completedFuture(UUID.randomUUID());
+    }
+
+    @Override
+    public CompletableFuture<Optional<UUID>> getContainerByLocation(Location location) {
+        // Stub implementation for SqliteVectorStorage
+        return CompletableFuture.completedFuture(Optional.empty());
+    }
+
+    @Override
+    public CompletableFuture<List<Location>> getContainerLocations(UUID containerId) {
+        // Stub implementation for SqliteVectorStorage
+        return CompletableFuture.completedFuture(Collections.emptyList());
+    }
+
+    @Override
+    public CompletableFuture<Optional<Location>> getPrimaryLocationForContainer(UUID containerId) {
+        // Stub implementation for SqliteVectorStorage
+        return CompletableFuture.completedFuture(Optional.empty());
+    }
+
+    @Override
+    public CompletableFuture<Void> deleteContainer(UUID containerId) {
+        // Stub implementation for SqliteVectorStorage
+        return CompletableFuture.completedFuture(null);
     }
 }
