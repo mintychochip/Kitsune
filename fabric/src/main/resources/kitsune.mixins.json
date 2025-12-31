@@ -1,0 +1,13 @@
+{
+  "required": true,
+  "package": "org.aincraft.kitsune.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "mixins": [
+    "ScreenHandlerMixin"
+  ],
+  "client": [
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

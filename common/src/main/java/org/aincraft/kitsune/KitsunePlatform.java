@@ -4,9 +4,8 @@ import java.nio.file.Path;
 import java.util.logging.Logger;
 import org.aincraft.kitsune.config.ConfigProvider;
 import org.aincraft.kitsune.logging.ChestFindLogger;
-import org.aincraft.kitsune.platform.DataFolderProvider;
 
-public interface KitsunePlatform extends ChestFindLogger, DataFolderProvider {
+public interface KitsunePlatform extends ChestFindLogger {
     Logger getLogger();
     Path getDataFolder();
     ConfigProvider getConfig();

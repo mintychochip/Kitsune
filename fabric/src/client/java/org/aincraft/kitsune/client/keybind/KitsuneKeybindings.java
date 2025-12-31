@@ -1,0 +1,51 @@
+package org.aincraft.kitsune.client.keybind;
+
+import net.fabricmc.api.EnvType;
+import net.fabricmc.api.Environment;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
+import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.option.KeyBinding;
+import net.minecraft.client.util.InputUtil;
+import org.aincraft.kitsune.client.screen.SearchScreen;
+import org.lwjgl.glfw.GLFW;
+
+/**
+ * Manages keybindings for Kitsune.
+ */
+@Environment(EnvType.CLIENT)
+public class KitsuneKeybindings {
+    private static KeyBinding openSearchKey;
+
+    private KitsuneKeybindings() {
+    }
+
+    /**
+     * Register all keybindings.
+     */
+    public static void register() {
+        openSearchKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
+                "key.kitsune.search",
+                InputUtil.Type.KEYSYM,
+                GLFW.GLFW_KEY_G,
+                "key.kitsune.category"
+        ));
+    }
+
+    /**
+     * Register the tick handler to process keybindings.
+     */
+    public static void registerTickHandler() {
+        ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            tick(client);
+        });
+    }
+
+    private static void tick(MinecraftClient client) {
+        while (openSearchKey.wasPressed()) {
+            if (client.currentScreen == null) {
+                client.setScreen(new SearchScreen());
+            }
+        }
+    }
+}

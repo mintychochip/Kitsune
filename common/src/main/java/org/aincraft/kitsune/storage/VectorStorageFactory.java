@@ -5,7 +5,6 @@ import java.util.logging.Logger;
 import org.aincraft.kitsune.KitsunePlatform;
 import org.aincraft.kitsune.config.KitsuneConfig;
 import org.aincraft.kitsune.logging.ChestFindLogger;
-import org.aincraft.kitsune.platform.DataFolderProvider;
 
 public class VectorStorageFactory {
     private VectorStorageFactory() {
@@ -15,7 +14,7 @@ public class VectorStorageFactory {
         return create(config, plugin, plugin);
     }
 
-    public static VectorStorage create(KitsuneConfig config, ChestFindLogger logger, DataFolderProvider dataFolder) {
+    public static VectorStorage create(KitsuneConfig config, ChestFindLogger logger, KitsunePlatform dataFolder) {
         String provider = config.getStorageProvider().toLowerCase();
 
         return switch (provider) {

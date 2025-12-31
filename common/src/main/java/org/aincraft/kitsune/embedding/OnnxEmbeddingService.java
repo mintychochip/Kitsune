@@ -14,11 +14,11 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import org.aincraft.kitsune.config.KitsuneConfig;
 import org.aincraft.kitsune.logging.ChestFindLogger;
-import org.aincraft.kitsune.platform.DataFolderProvider;
+import org.aincraft.kitsune.KitsunePlatform;
 
 public class OnnxEmbeddingService implements EmbeddingService {
     private final ChestFindLogger logger;
-    private final DataFolderProvider dataFolderProvider;
+    private final KitsunePlatform dataFolderProvider;
     private final ScheduledExecutorService executor = Executors.newScheduledThreadPool(2);
     private OrtEnvironment env;
     private OrtSession session;
@@ -28,7 +28,7 @@ public class OnnxEmbeddingService implements EmbeddingService {
     private final int embeddingDim;
     private static final int MAX_SEQUENCE_LENGTH = 512;
 
-    public OnnxEmbeddingService(KitsuneConfig config, ChestFindLogger logger, DataFolderProvider dataFolderProvider) {
+    public OnnxEmbeddingService(KitsuneConfig config, ChestFindLogger logger, KitsunePlatform dataFolderProvider) {
         this.logger = logger;
         this.dataFolderProvider = dataFolderProvider;
         this.modelName = config.getOnnxModel();
