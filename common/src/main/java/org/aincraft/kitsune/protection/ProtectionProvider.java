@@ -1,7 +1,7 @@
 package org.aincraft.kitsune.protection;
 
 import java.util.UUID;
-import org.aincraft.kitsune.api.LocationData;
+import org.aincraft.kitsune.api.Location;
 
 /**
  * Platform-agnostic interface for protection plugin integration.
@@ -19,5 +19,5 @@ public interface ProtectionProvider {
      * @param location The container location
      * @return true if the player can access the container, false otherwise
      */
-    boolean canAccess(UUID playerId, LocationData location);
+    boolean canAccess(UUID playerId, Location location);
 }

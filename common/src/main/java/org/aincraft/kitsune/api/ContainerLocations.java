@@ -10,15 +10,15 @@ import java.util.Objects;
  * The primary location serves as the canonical position for storage and lookups.
  */
 public final class ContainerLocations {
-    private final LocationData primaryLocation;
-    private final List<LocationData> allLocations;
+    private final Location primaryLocation;
+    private final List<Location> allLocations;
 
     /**
      * Private constructor for creating ContainerLocations instances.
-     * Use factory methods like {@link #single(LocationData)} or
-     * {@link #multi(LocationData, List)} instead.
+     * Use factory methods like {@link #single(Location)} or
+     * {@link #multi(Location, List)} instead.
      */
-    private ContainerLocations(LocationData primaryLocation, List<LocationData> allLocations) {
+    private ContainerLocations(Location primaryLocation, List<Location> allLocations) {
         this.primaryLocation = primaryLocation;
         this.allLocations = List.copyOf(allLocations);
     }
@@ -30,7 +30,7 @@ public final class ContainerLocations {
      * @return a new ContainerLocations instance
      * @throws NullPointerException if location is null
      */
-    public static ContainerLocations single(LocationData location) {
+    public static ContainerLocations single(Location location) {
         Preconditions.checkNotNull(location, "Location cannot be null");
         return new ContainerLocations(location, List.of(location));
     }
@@ -44,7 +44,7 @@ public final class ContainerLocations {
      * @throws NullPointerException if primaryLocation or allLocations is null
      * @throws IllegalArgumentException if allLocations is empty or doesn't contain primaryLocation
      */
-    public static ContainerLocations multi(LocationData primaryLocation, List<LocationData> allLocations) {
+    public static ContainerLocations multi(Location primaryLocation, List<Location> allLocations) {
         Preconditions.checkNotNull(primaryLocation, "Primary location cannot be null");
         Preconditions.checkNotNull(allLocations, "All locations cannot be null");
         Preconditions.checkArgument(!allLocations.isEmpty(), "All locations cannot be empty");
@@ -58,14 +58,14 @@ public final class ContainerLocations {
     /**
      * Returns the canonical location used for storage and lookups.
      */
-    public LocationData primaryLocation() {
+    public Location primaryLocation() {
         return primaryLocation;
     }
 
     /**
      * Returns an immutable list of all physical block positions.
      */
-    public List<LocationData> allLocations() {
+    public List<Location> allLocations() {
         return allLocations;
     }
 
@@ -75,7 +75,7 @@ public final class ContainerLocations {
      * @param loc the location to check
      * @return true if this container spans the given location, false otherwise
      */
-    public boolean containsPosition(LocationData loc) {
+    public boolean containsPosition(Location loc) {
         Preconditions.checkNotNull(loc, "Location cannot be null");
         return allLocations.contains(loc);
     }

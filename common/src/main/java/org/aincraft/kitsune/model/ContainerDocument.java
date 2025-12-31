@@ -1,9 +1,9 @@
 package org.aincraft.kitsune.model;
 
-import org.aincraft.kitsune.api.LocationData;
+import org.aincraft.kitsune.api.Location;
 
 public record ContainerDocument(
-    LocationData location,
+    Location location,
     String contentText,
     float[] embedding,
     long timestamp

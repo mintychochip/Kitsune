@@ -1,8 +1,7 @@
 package org.aincraft.kitsune.util;
 
-import org.aincraft.kitsune.api.LocationData;
+import org.aincraft.kitsune.api.Location;
 import org.bukkit.Bukkit;
-import org.bukkit.Location;
 import org.bukkit.World;
 
 /**
@@ -21,7 +20,7 @@ public final class LocationConverter {
      * @return the platform-agnostic location data
      * @throws IllegalArgumentException if location or world is null
      */
-    public static LocationData toLocationData(Location location) {
+    public static Location toLocationData(org.bukkit.Location location) {
         if (location == null) {
             throw new IllegalArgumentException("Location cannot be null");
         }
@@ -29,7 +28,7 @@ public final class LocationConverter {
         if (world == null) {
             throw new IllegalArgumentException("Location's world cannot be null");
         }
-        return LocationData.of(
+        return Location.of(
             world.getName(),
             location.getBlockX(),
             location.getBlockY(),
@@ -43,7 +42,7 @@ public final class LocationConverter {
      * @param data the platform-agnostic location data
      * @return the Bukkit location, or null if the world doesn't exist
      */
-    public static Location toBukkitLocation(LocationData data) {
+    public static org.bukkit.Location toBukkitLocation(Location data) {
         if (data == null) {
             throw new IllegalArgumentException("LocationData cannot be null");
         }
@@ -51,7 +50,7 @@ public final class LocationConverter {
         if (world == null) {
             return null; // World not loaded
         }
-        return new Location(world, data.blockX(), data.blockY(), data.blockZ());
+        return new org.bukkit.Location(world, data.blockX(), data.blockY(), data.blockZ());
     }
 
     /**
@@ -60,7 +59,7 @@ public final class LocationConverter {
      * @param data the platform-agnostic location data
      * @return the Bukkit location centered in the block, or null if the world doesn't exist
      */
-    public static Location toBukkitLocationCentered(LocationData data) {
+    public static org.bukkit.Location toBukkitLocationCentered(Location data) {
         if (data == null) {
             throw new IllegalArgumentException("LocationData cannot be null");
         }
@@ -68,6 +67,6 @@ public final class LocationConverter {
         if (world == null) {
             return null; // World not loaded
         }
-        return new Location(world, data.blockX() + 0.5, data.blockY() + 0.5, data.blockZ() + 0.5);
+        return new org.bukkit.Location(world, data.blockX() + 0.5, data.blockY() + 0.5, data.blockZ() + 0.5);
     }
 }

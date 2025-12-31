@@ -2,7 +2,7 @@ package org.aincraft.kitsune.model;
 
 import com.google.common.base.Preconditions;
 import java.util.List;
-import org.aincraft.kitsune.api.LocationData;
+import org.aincraft.kitsune.api.Location;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -11,8 +11,8 @@ import org.jetbrains.annotations.Nullable;
  * Can optionally include the path through nested containers where the item was found.
  */
 public record SearchResult(
-    LocationData location,
-    List<LocationData> allLocations,
+    Location location,
+    List<Location> allLocations,
     double score,
     String preview,
     String fullContent,
@@ -32,17 +32,17 @@ public record SearchResult(
     }
 
     // Backwards compatible constructor without containerPath
-    public SearchResult(LocationData location, List<LocationData> allLocations, double score, String preview, String fullContent) {
+    public SearchResult(Location location, List<Location> allLocations, double score, String preview, String fullContent) {
         this(location, allLocations, score, preview, fullContent, null);
     }
 
     // Backwards compatible constructor without allLocations or containerPath
-    public SearchResult(LocationData location, double score, String preview, String fullContent) {
+    public SearchResult(Location location, double score, String preview, String fullContent) {
         this(location, List.of(location), score, preview, fullContent, null);
     }
 
     // Backwards compatible constructor with preview only
-    public SearchResult(LocationData location, double score, String preview) {
+    public SearchResult(Location location, double score, String preview) {
         this(location, List.of(location), score, preview, preview, null);
     }
 }

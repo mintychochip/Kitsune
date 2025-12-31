@@ -40,7 +40,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.aincraft.kitsune.api.ContainerLocations;
-import org.aincraft.kitsune.api.LocationData;
+import org.aincraft.kitsune.api.Location;
 import org.aincraft.kitsune.model.ContainerChunk;
 import org.aincraft.kitsune.model.ContainerDocument;
 import org.aincraft.kitsune.model.ContainerPath;
@@ -246,7 +246,7 @@ public class JVectorStorage implements VectorStorage {
         return CompletableFuture.runAsync(() -> {
             indexLock.writeLock().lock();
             try {
-                LocationData loc = chunks.get(0).location();
+                Location loc = chunks.get(0).location();
 
                 // Delete existing chunks for this location
                 deleteLocationChunks(loc);
@@ -295,7 +295,7 @@ public class JVectorStorage implements VectorStorage {
         }, executor);
     }
 
-    private void deleteLocationChunks(LocationData loc) throws SQLException {
+    private void deleteLocationChunks(Location loc) throws SQLException {
         try (Connection conn = dataSource.getConnection()) {
             // Get UUIDs for chunks at this location
             String selectSql = "SELECT id, ordinal FROM containers WHERE world = ? AND x = ? AND y = ? AND z = ?";
@@ -412,7 +412,7 @@ public class JVectorStorage implements VectorStorage {
                                             continue;
                                         }
 
-                                        LocationData loc = LocationData.of(
+                                        Location loc = Location.of(
                                             w, rs.getInt("x"), rs.getInt("y"), rs.getInt("z")
                                         );
                                         String fullContent = rs.getString("content_text");
@@ -583,7 +583,7 @@ public class JVectorStorage implements VectorStorage {
     }
 
     @Override
-    public CompletableFuture<Void> delete(LocationData location) {
+    public CompletableFuture<Void> delete(Location location) {
         return CompletableFuture.runAsync(() -> {
             indexLock.writeLock().lock();
             try {
@@ -611,7 +611,7 @@ public class JVectorStorage implements VectorStorage {
                     stmt.setString(1, id.toString());
                     try (ResultSet rs = stmt.executeQuery()) {
                         if (rs.next()) {
-                            LocationData loc = LocationData.of(
+                            Location loc = Location.of(
                                 rs.getString("world"),
                                 rs.getInt("x"),
                                 rs.getInt("y"),
@@ -699,7 +699,7 @@ public class JVectorStorage implements VectorStorage {
         }, executor);
     }
 
-    public CompletableFuture<List<UUID>> getChunkIdsByLocation(LocationData location) {
+    public CompletableFuture<List<UUID>> getChunkIdsByLocation(Location location) {
         return CompletableFuture.supplyAsync(() -> {
             indexLock.readLock().lock();
             try (Connection conn = dataSource.getConnection()) {
@@ -846,21 +846,21 @@ public class JVectorStorage implements VectorStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<LocationData>> getPrimaryLocation(LocationData anyPosition) {
+    public CompletableFuture<Optional<Location>> getPrimaryLocation(Location anyPosition) {
         // JVectorStorage doesn't track multi-block container positions
         // Return the input position as-is (assumes all positions are primary)
         return CompletableFuture.completedFuture(Optional.of(anyPosition));
     }
 
     @Override
-    public CompletableFuture<List<LocationData>> getAllPositions(LocationData primaryLocation) {
+    public CompletableFuture<List<Location>> getAllPositions(Location primaryLocation) {
         // JVectorStorage doesn't track multi-block container positions
         // Return just the primary location
         return CompletableFuture.completedFuture(Collections.singletonList(primaryLocation));
     }
 
     @Override
-    public CompletableFuture<Void> deleteContainerPositions(LocationData primaryLocation) {
+    public CompletableFuture<Void> deleteContainerPositions(Location primaryLocation) {
         // JVectorStorage doesn't track multi-block container positions
         // This is a no-op for this implementation
         return CompletableFuture.completedFuture(null);

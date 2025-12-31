@@ -1,7 +1,7 @@
 package org.aincraft.kitsune.indexing;
 
 import org.aincraft.kitsune.api.ContainerLocations;
-import org.aincraft.kitsune.api.LocationData;
+import org.aincraft.kitsune.api.Location;
 import org.aincraft.kitsune.config.KitsuneConfig;
 import org.aincraft.kitsune.embedding.EmbeddingService;
 import org.aincraft.kitsune.logging.ChestFindLogger;
@@ -32,7 +32,7 @@ public class ContainerIndexer {
     private final VectorStorage vectorStorage;
     private final KitsuneConfig config;
     private final ScheduledExecutorService executor = Executors.newScheduledThreadPool(2);
-    private final Map<LocationData, ScheduledFuture<?>> pendingIndexes = new HashMap<>();
+    private final Map<Location, ScheduledFuture<?>> pendingIndexes = new HashMap<>();
     private final int debounceDelayMs;
 
     public ContainerIndexer(ChestFindLogger logger, EmbeddingService embeddingService,
@@ -52,7 +52,7 @@ public class ContainerIndexer {
      * @param serializedItems the serialized items to index
      */
     public void scheduleIndex(ContainerLocations locations, List<SerializedItem> serializedItems) {
-        LocationData primaryLocation = locations.primaryLocation();
+        Location primaryLocation = locations.primaryLocation();
 
         // Register container position mappings (async)
         vectorStorage.registerContainerPositions(locations).exceptionally(ex -> {
@@ -81,13 +81,13 @@ public class ContainerIndexer {
      * Performs the actual indexing of container items.
      * Generates embeddings and stores in vector database.
      *
-     * @param locationData the location of the container
+     * @param location the location of the container
      * @param serializedItems the serialized items to index
      */
-    protected void performIndex(LocationData locationData, List<SerializedItem> serializedItems) {
+    protected void performIndex(Location location, List<SerializedItem> serializedItems) {
 
         if (serializedItems.isEmpty()) {
-            vectorStorage.delete(locationData).exceptionally(ex -> {
+            vectorStorage.delete(location).exceptionally(ex -> {
                 logger.log(ChestFindLogger.LogLevel.WARNING, "Failed to delete empty container", ex);
                 return null;
             });
@@ -106,13 +106,13 @@ public class ContainerIndexer {
             String embeddingText = serialized.embeddingText().toLowerCase();
 
             // Log what we're embedding
-            logger.info("Indexing chunk " + chunkIndex + " at " + locationData +
+            logger.info("Indexing chunk " + chunkIndex + " at " + location +
                 ": embedding=\"" + embeddingText + "\"");
 
             // Embed the lowercase text, store original in content_text for display
             CompletableFuture<ContainerChunk> chunkFuture = embeddingService.embed(embeddingText, "RETRIEVAL_DOCUMENT")
                 .thenApply(embedding -> new ContainerChunk(
-                    locationData,
+                    location,
                     chunkIndex,
                     embeddingText,  // Store lowercase text that was embedded
                     embedding,
@@ -138,11 +138,11 @@ public class ContainerIndexer {
             .thenCompose(chunks -> vectorStorage.indexChunks(chunks))
             .thenRun(() -> {
                 synchronized (pendingIndexes) {
-                    pendingIndexes.remove(locationData);
+                    pendingIndexes.remove(location);
                 }
             })
             .exceptionally(ex -> {
-                logger.log(ChestFindLogger.LogLevel.WARNING, "Failed to index container at " + locationData, ex);
+                logger.log(ChestFindLogger.LogLevel.WARNING, "Failed to index container at " + location, ex);
                 return null;
             });
     }

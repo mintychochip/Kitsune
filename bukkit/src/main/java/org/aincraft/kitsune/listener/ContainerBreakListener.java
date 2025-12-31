@@ -1,6 +1,6 @@
 package org.aincraft.kitsune.listener;
 
-import org.aincraft.kitsune.api.LocationData;
+import org.aincraft.kitsune.api.Location;
 import org.aincraft.kitsune.storage.VectorStorage;
 import org.aincraft.kitsune.util.LocationConverter;
 import org.bukkit.block.Container;
@@ -22,12 +22,12 @@ public class ContainerBreakListener implements Listener {
         }
 
         // Convert broken block location
-        LocationData brokenLocation = LocationConverter.toLocationData(event.getBlock().getLocation());
+        Location brokenLocation = LocationConverter.toLocationData(event.getBlock().getLocation());
 
         // Look up the primary location for this block (handles multi-block containers)
         vectorStorage.getPrimaryLocation(brokenLocation)
             .thenCompose(primaryOpt -> {
-                LocationData primaryLocation = primaryOpt.orElse(brokenLocation);
+                Location primaryLocation = primaryOpt.orElse(brokenLocation);
 
                 // Delete the container from the index
                 return vectorStorage.delete(primaryLocation)

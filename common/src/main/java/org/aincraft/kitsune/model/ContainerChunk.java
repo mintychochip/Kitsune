@@ -1,7 +1,7 @@
 package org.aincraft.kitsune.model;
 
 import com.google.common.base.Preconditions;
-import org.aincraft.kitsune.api.LocationData;
+import org.aincraft.kitsune.api.Location;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -11,7 +11,7 @@ import org.jetbrains.annotations.Nullable;
  * Can optionally include the path through nested containers where the item was found.
  */
 public record ContainerChunk(
-    LocationData location,
+    Location location,
     int chunkIndex,
     String contentText,
     float[] embedding,
@@ -29,7 +29,7 @@ public record ContainerChunk(
      * Constructor for backward compatibility without containerPath.
      */
     public ContainerChunk(
-        LocationData location,
+        Location location,
         int chunkIndex,
         String contentText,
         float[] embedding,

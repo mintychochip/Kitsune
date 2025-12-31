@@ -1,13 +1,12 @@
 package org.aincraft.kitsune.indexing;
 
 import org.aincraft.kitsune.api.ContainerLocations;
-import org.aincraft.kitsune.api.LocationData;
+import org.aincraft.kitsune.api.Location;
 import org.aincraft.kitsune.config.KitsuneConfig;
 import org.aincraft.kitsune.embedding.EmbeddingService;
 import org.aincraft.kitsune.logging.ChestFindLogger;
 import org.aincraft.kitsune.storage.VectorStorage;
 import org.aincraft.kitsune.util.LocationConverter;
-import org.bukkit.Location;
 import org.bukkit.block.Container;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
@@ -28,7 +27,7 @@ import java.util.concurrent.TimeUnit;
  */
 public class BukkitContainerIndexer extends ContainerIndexer {
     private final ScheduledExecutorService executor = Executors.newScheduledThreadPool(2);
-    private final Map<Location, ScheduledFuture<?>> pendingLocationIndexes = new HashMap<>();
+    private final Map<org.bukkit.Location, ScheduledFuture<?>> pendingLocationIndexes = new HashMap<>();
     private final int debounceDelayMs;
 
     public BukkitContainerIndexer(ChestFindLogger logger, EmbeddingService embeddingService,
@@ -44,12 +43,12 @@ public class BukkitContainerIndexer extends ContainerIndexer {
      * @param location the Bukkit location
      * @param items the Bukkit items to index
      */
-    public void scheduleIndex(Location location, ItemStack[] items) {
+    public void scheduleIndex(org.bukkit.Location location, ItemStack[] items) {
         if (location.getWorld() == null) {
             return;
         }
 
-        LocationData locationData = LocationConverter.toLocationData(location);
+        Location locationData = LocationConverter.toLocationData(location);
         List<SerializedItem> serializedItems = ItemSerializer.serializeItemsToChunks(items);
         scheduleIndex(ContainerLocations.single(locationData), serializedItems);
     }
@@ -62,7 +61,7 @@ public class BukkitContainerIndexer extends ContainerIndexer {
      * @param radius the scan radius
      * @return CompletableFuture with count of reindexed containers
      */
-    public CompletableFuture<Integer> reindexRadius(Location center, int radius) {
+    public CompletableFuture<Integer> reindexRadius(org.bukkit.Location center, int radius) {
         return CompletableFuture.supplyAsync(() -> {
             if (center.getWorld() == null) {
                 return new ArrayList<ScheduledFuture<?>>();
@@ -76,7 +75,7 @@ public class BukkitContainerIndexer extends ContainerIndexer {
             for (int dx = -radius; dx <= radius; dx++) {
                 for (int dy = -radius; dy <= radius; dy++) {
                     for (int dz = -radius; dz <= radius; dz++) {
-                        Location loc = center.clone().add(dx, dy, dz);
+                        org.bukkit.Location loc = center.clone().add(dx, dy, dz);
                         if (center.distance(loc) <= radius) {
                             var block = loc.getBlock();
                             if (block.getState() instanceof Container container) {
@@ -107,7 +106,7 @@ public class BukkitContainerIndexer extends ContainerIndexer {
      * @param items the items to index
      * @param taskList the list to add the scheduled future to
      */
-    private void scheduleIndexAndTrack(Location location, ItemStack[] items, List<ScheduledFuture<?>> taskList) {
+    private void scheduleIndexAndTrack(org.bukkit.Location location, ItemStack[] items, List<ScheduledFuture<?>> taskList) {
         if (location.getWorld() == null) {
             return;
         }
@@ -135,8 +134,8 @@ public class BukkitContainerIndexer extends ContainerIndexer {
      * @param location the Bukkit location
      * @param items the Bukkit items to index
      */
-    private void performIndex(Location location, ItemStack[] items) {
-        LocationData locationData = LocationConverter.toLocationData(location);
+    private void performIndex(org.bukkit.Location location, ItemStack[] items) {
+        Location locationData = LocationConverter.toLocationData(location);
         List<SerializedItem> serializedItems = ItemSerializer.serializeItemsToChunks(items);
         performIndex(locationData, serializedItems);
     }

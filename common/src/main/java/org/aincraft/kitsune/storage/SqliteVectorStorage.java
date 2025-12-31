@@ -23,7 +23,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.aincraft.kitsune.api.ContainerLocations;
-import org.aincraft.kitsune.api.LocationData;
+import org.aincraft.kitsune.api.Location;
 import org.aincraft.kitsune.model.ContainerChunk;
 import org.aincraft.kitsune.model.ContainerDocument;
 import org.aincraft.kitsune.model.SearchResult;
@@ -147,7 +147,7 @@ public class SqliteVectorStorage implements VectorStorage {
         return CompletableFuture.runAsync(() -> {
             try (Connection conn = dataSource.getConnection()) {
                 // Delete all existing chunks for this location first
-                LocationData loc = chunks.get(0).location();
+                Location loc = chunks.get(0).location();
                 String deleteSql = "DELETE FROM containers WHERE world = ? AND x = ? AND y = ? AND z = ?";
                 try (PreparedStatement stmt = conn.prepareStatement(deleteSql)) {
                     stmt.setString(1, loc.worldName());
@@ -213,7 +213,7 @@ public class SqliteVectorStorage implements VectorStorage {
                                 float[] storedEmbedding = deserializeEmbedding(rs.getBytes("embedding"));
                                 double similarity = cosineSimilarity(embedding, storedEmbedding);
 
-                                LocationData loc = LocationData.of(
+                                Location loc = Location.of(
                                     rs.getString("world"),
                                     rs.getInt("x"),
                                     rs.getInt("y"),
@@ -262,7 +262,7 @@ public class SqliteVectorStorage implements VectorStorage {
     }
 
     @Override
-    public CompletableFuture<Void> delete(LocationData location) {
+    public CompletableFuture<Void> delete(Location location) {
         return CompletableFuture.runAsync(() -> {
             try (Connection conn = dataSource.getConnection()) {
                 String sql = "DELETE FROM containers WHERE world = ? AND x = ? AND y = ? AND z = ?";
@@ -335,8 +335,8 @@ public class SqliteVectorStorage implements VectorStorage {
                     """;
 
                 try (PreparedStatement stmt = conn.prepareStatement(sql)) {
-                    LocationData primary = locations.primaryLocation();
-                    for (LocationData position : locations.allLocations()) {
+                    Location primary = locations.primaryLocation();
+                    for (Location position : locations.allLocations()) {
                         stmt.setString(1, position.worldName());
                         stmt.setInt(2, position.blockX());
                         stmt.setInt(3, position.blockY());
@@ -357,7 +357,7 @@ public class SqliteVectorStorage implements VectorStorage {
     }
 
     @Override
-    public CompletableFuture<Optional<LocationData>> getPrimaryLocation(LocationData anyPosition) {
+    public CompletableFuture<Optional<Location>> getPrimaryLocation(Location anyPosition) {
         return CompletableFuture.supplyAsync(() -> {
             try (Connection conn = dataSource.getConnection()) {
                 String sql = """
@@ -374,7 +374,7 @@ public class SqliteVectorStorage implements VectorStorage {
 
                     try (ResultSet rs = stmt.executeQuery()) {
                         if (rs.next()) {
-                            LocationData primary = LocationData.of(
+                            Location primary = Location.of(
                                 rs.getString("primary_world"),
                                 rs.getInt("primary_x"),
                                 rs.getInt("primary_y"),
@@ -394,7 +394,7 @@ public class SqliteVectorStorage implements VectorStorage {
     }
 
     @Override
-    public CompletableFuture<List<LocationData>> getAllPositions(LocationData primaryLocation) {
+    public CompletableFuture<List<Location>> getAllPositions(Location primaryLocation) {
         return CompletableFuture.supplyAsync(() -> {
             try (Connection conn = dataSource.getConnection()) {
                 String sql = """
@@ -403,7 +403,7 @@ public class SqliteVectorStorage implements VectorStorage {
                     WHERE primary_world = ? AND primary_x = ? AND primary_y = ? AND primary_z = ?
                     """;
 
-                List<LocationData> positions = new ArrayList<>();
+                List<Location> positions = new ArrayList<>();
                 try (PreparedStatement stmt = conn.prepareStatement(sql)) {
                     stmt.setString(1, primaryLocation.worldName());
                     stmt.setInt(2, primaryLocation.blockX());
@@ -412,7 +412,7 @@ public class SqliteVectorStorage implements VectorStorage {
 
                     try (ResultSet rs = stmt.executeQuery()) {
                         while (rs.next()) {
-                            LocationData pos = LocationData.of(
+                            Location pos = Location.of(
                                 rs.getString("world"),
                                 rs.getInt("x"),
                                 rs.getInt("y"),
@@ -436,7 +436,7 @@ public class SqliteVectorStorage implements VectorStorage {
     }
 
     @Override
-    public CompletableFuture<Void> deleteContainerPositions(LocationData primaryLocation) {
+    public CompletableFuture<Void> deleteContainerPositions(Location primaryLocation) {
         return CompletableFuture.runAsync(() -> {
             try (Connection conn = dataSource.getConnection()) {
                 String sql = """

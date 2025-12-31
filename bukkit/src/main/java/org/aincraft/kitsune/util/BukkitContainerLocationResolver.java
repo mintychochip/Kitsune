@@ -1,7 +1,7 @@
 package org.aincraft.kitsune.util;
 
 import org.aincraft.kitsune.api.ContainerLocations;
-import org.aincraft.kitsune.api.LocationData;
+import org.aincraft.kitsune.api.Location;
 import org.bukkit.block.Block;
 import org.bukkit.block.Chest;
 import org.bukkit.block.Container;
@@ -29,7 +29,7 @@ public final class BukkitContainerLocationResolver implements ContainerLocationR
 
         // Handle regular container blocks
         if (holder instanceof Container container) {
-            LocationData location = LocationConverter.toLocationData(container.getLocation());
+            Location location = LocationConverter.toLocationData(container.getLocation());
             return ContainerLocations.single(location);
         }
 
@@ -55,7 +55,7 @@ public final class BukkitContainerLocationResolver implements ContainerLocationR
         }
 
         // Fallback to single location
-        LocationData location = LocationConverter.toLocationData(block.getLocation());
+        Location location = LocationConverter.toLocationData(block.getLocation());
         return ContainerLocations.single(location);
     }
 
@@ -82,11 +82,11 @@ public final class BukkitContainerLocationResolver implements ContainerLocationR
         Chest leftChest = (Chest) leftHolder;
         Chest rightChest = (Chest) rightHolder;
 
-        LocationData leftLocation = LocationConverter.toLocationData(leftChest.getLocation());
-        LocationData rightLocation = LocationConverter.toLocationData(rightChest.getLocation());
+        Location leftLocation = LocationConverter.toLocationData(leftChest.getLocation());
+        Location rightLocation = LocationConverter.toLocationData(rightChest.getLocation());
 
         // Determine primary location: smaller X, then smaller Z (lexicographically)
-        LocationData primaryLocation;
+        Location primaryLocation;
         if (isLocationSmaller(leftLocation, rightLocation)) {
             primaryLocation = leftLocation;
         } else {
@@ -107,7 +107,7 @@ public final class BukkitContainerLocationResolver implements ContainerLocationR
      * @param loc2 second location
      * @return true if loc1 is smaller than loc2
      */
-    private boolean isLocationSmaller(LocationData loc1, LocationData loc2) {
+    private boolean isLocationSmaller(Location loc1, Location loc2) {
         if (loc1.blockX() != loc2.blockX()) {
             return loc1.blockX() < loc2.blockX();
         }

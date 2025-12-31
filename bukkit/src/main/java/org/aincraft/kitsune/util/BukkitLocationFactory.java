@@ -1,9 +1,8 @@
 package org.aincraft.kitsune.util;
 
 import com.google.common.base.Preconditions;
-import org.aincraft.kitsune.api.LocationData;
+import org.aincraft.kitsune.api.Location;
 import org.bukkit.Bukkit;
-import org.bukkit.Location;
 import org.bukkit.World;
 
 /**
@@ -22,11 +21,11 @@ public final class BukkitLocationFactory {
      * @return the platform-agnostic location data
      * @throws IllegalArgumentException if location or world is null
      */
-    public static LocationData toLocationData(Location location) {
+    public static Location toLocationData(org.bukkit.Location location) {
         Preconditions.checkNotNull(location, "Location cannot be null");
         World world = location.getWorld();
         Preconditions.checkNotNull(world, "Location's world cannot be null");
-        return LocationData.of(
+        return Location.of(
             world.getName(),
             location.getBlockX(),
             location.getBlockY(),
@@ -40,13 +39,13 @@ public final class BukkitLocationFactory {
      * @param data the platform-agnostic location data
      * @return the Bukkit location, or null if the world doesn't exist
      */
-    public static Location toBukkitLocation(LocationData data) {
+    public static org.bukkit.Location toBukkitLocation(Location data) {
         Preconditions.checkNotNull(data, "LocationData cannot be null");
         World world = Bukkit.getWorld(data.worldName());
         if (world == null) {
             return null; // World not loaded
         }
-        return new Location(world, data.blockX(), data.blockY(), data.blockZ());
+        return new org.bukkit.Location(world, data.blockX(), data.blockY(), data.blockZ());
     }
 
     /**
@@ -55,12 +54,12 @@ public final class BukkitLocationFactory {
      * @param data the platform-agnostic location data
      * @return the Bukkit location centered in the block, or null if the world doesn't exist
      */
-    public static Location toBukkitLocationCentered(LocationData data) {
+    public static org.bukkit.Location toBukkitLocationCentered(Location data) {
         Preconditions.checkNotNull(data, "LocationData cannot be null");
         World world = Bukkit.getWorld(data.worldName());
         if (world == null) {
             return null; // World not loaded
         }
-        return new Location(world, data.blockX() + 0.5, data.blockY() + 0.5, data.blockZ() + 0.5);
+        return new org.bukkit.Location(world, data.blockX() + 0.5, data.blockY() + 0.5, data.blockZ() + 0.5);
     }
 }

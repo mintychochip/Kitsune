@@ -1,6 +1,6 @@
 package org.aincraft.kitsune.indexing;
 
-import org.aincraft.kitsune.api.LocationData;
+import org.aincraft.kitsune.api.Location;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
@@ -16,11 +16,11 @@ public interface ContainerScanner {
      * @param radius the radius to scan
      * @return a CompletableFuture with a list of ContainerScan results
      */
-    CompletableFuture<List<ContainerScan>> scanRadius(LocationData centerLocation, int radius);
+    CompletableFuture<List<ContainerScan>> scanRadius(Location centerLocation, int radius);
 
     /**
      * Represents a container found during scanning.
      */
-    record ContainerScan(LocationData location, Object itemArray) {
+    record ContainerScan(Location location, Object itemArray) {
     }
 }

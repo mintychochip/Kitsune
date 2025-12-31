@@ -1,10 +1,9 @@
 package org.aincraft.kitsune.protection;
 
 import java.util.UUID;
-import org.aincraft.kitsune.api.LocationData;
+import org.aincraft.kitsune.api.Location;
 import org.aincraft.kitsune.util.LocationConverter;
 import org.bukkit.Bukkit;
-import org.bukkit.Location;
 import org.bukkit.entity.Player;
 
 /**
@@ -15,14 +14,14 @@ public abstract class BukkitProtectionProvider
     implements org.aincraft.kitsune.protection.ProtectionProvider {
 
     @Override
-    public final boolean canAccess(UUID playerId, LocationData location) {
+    public final boolean canAccess(UUID playerId, Location location) {
         Player player = Bukkit.getPlayer(playerId);
         if (player == null) {
             // Player not online - cannot verify access
             return false;
         }
 
-        Location bukkitLocation = LocationConverter.toBukkitLocation(location);
+        org.bukkit.Location bukkitLocation = LocationConverter.toBukkitLocation(location);
         if (bukkitLocation == null) {
             // World not loaded - allow access by default
             return true;
@@ -38,5 +37,5 @@ public abstract class BukkitProtectionProvider
      * @param location The Bukkit location
      * @return true if access is allowed
      */
-    protected abstract boolean canAccessBukkit(Player player, Location location);
+    protected abstract boolean canAccessBukkit(Player player, org.bukkit.Location location);
 }

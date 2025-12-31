@@ -2,7 +2,7 @@ package org.aincraft.kitsune.model;
 
 import com.google.common.base.Preconditions;
 import java.util.UUID;
-import org.aincraft.kitsune.api.LocationData;
+import org.aincraft.kitsune.api.Location;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -13,7 +13,7 @@ import org.jetbrains.annotations.Nullable;
  */
 public record IndexedChunk(
     UUID id,
-    LocationData location,
+    Location location,
     int chunkIndex,
     String contentText,
     float[] embedding,
@@ -34,7 +34,7 @@ public record IndexedChunk(
      */
     public IndexedChunk(
         UUID id,
-        LocationData location,
+        Location location,
         int chunkIndex,
         String contentText,
         float[] embedding,

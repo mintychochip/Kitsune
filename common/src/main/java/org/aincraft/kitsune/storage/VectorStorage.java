@@ -4,7 +4,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import org.aincraft.kitsune.api.ContainerLocations;
-import org.aincraft.kitsune.api.LocationData;
+import org.aincraft.kitsune.api.Location;
 import org.aincraft.kitsune.model.ContainerChunk;
 import org.aincraft.kitsune.model.ContainerDocument;
 import org.aincraft.kitsune.model.SearchResult;
@@ -48,7 +48,7 @@ public interface VectorStorage {
      * @param location The location of the container
      * @return CompletableFuture that completes when deletion is done
      */
-    CompletableFuture<Void> delete(LocationData location);
+    CompletableFuture<Void> delete(Location location);
 
     /**
      * Gets storage statistics.
@@ -79,19 +79,19 @@ public interface VectorStorage {
      * @param anyPosition Any position of the container
      * @return CompletableFuture containing the primary location, or empty if not found
      */
-    CompletableFuture<Optional<LocationData>> getPrimaryLocation(LocationData anyPosition);
+    CompletableFuture<Optional<Location>> getPrimaryLocation(Location anyPosition);
 
     /**
      * Gets all positions for a container given its primary location.
      * @param primaryLocation The primary location of the container
      * @return CompletableFuture containing all positions for this container
      */
-    CompletableFuture<List<LocationData>> getAllPositions(LocationData primaryLocation);
+    CompletableFuture<List<Location>> getAllPositions(Location primaryLocation);
 
     /**
      * Deletes position mappings for a container.
      * @param primaryLocation The primary location of the container
      * @return CompletableFuture that completes when deletion is done
      */
-    CompletableFuture<Void> deleteContainerPositions(LocationData primaryLocation);
+    CompletableFuture<Void> deleteContainerPositions(Location primaryLocation);
 }
