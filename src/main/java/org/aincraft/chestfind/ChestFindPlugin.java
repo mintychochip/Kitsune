@@ -17,6 +17,8 @@ import org.aincraft.chestfind.protection.ProtectionProvider;
 import org.aincraft.chestfind.protection.ProtectionProviderFactory;
 import org.aincraft.chestfind.storage.VectorStorage;
 import org.aincraft.chestfind.storage.VectorStorageFactory;
+import org.aincraft.chestfind.util.BukkitContainerLocationResolver;
+import org.aincraft.chestfind.util.ContainerLocationResolver;
 import org.bukkit.Color;
 import org.bukkit.Location;
 import org.bukkit.Particle;
@@ -34,6 +36,7 @@ public final class ChestFindPlugin extends JavaPlugin {
     private VectorStorage vectorStorage;
     private ProtectionProvider protectionProvider;
     private ContainerIndexer containerIndexer;
+    private ContainerLocationResolver containerLocationResolver;
     private boolean initialized = false;
 
     @Override
@@ -65,6 +68,7 @@ public final class ChestFindPlugin extends JavaPlugin {
             this.embeddingService = EmbeddingServiceFactory.create(chestFindConfig, this);
             this.vectorStorage = VectorStorageFactory.create(chestFindConfig, this);
             this.protectionProvider = ProtectionProviderFactory.create(chestFindConfig, this);
+            this.containerLocationResolver = new BukkitContainerLocationResolver();
             this.containerIndexer = new ContainerIndexer(this, embeddingService, vectorStorage, chestFindConfig);
             return null;
         }).thenCompose(v -> embeddingService.initialize())
@@ -73,8 +77,8 @@ public final class ChestFindPlugin extends JavaPlugin {
 
     private void registerListeners() {
         var pm = getServer().getPluginManager();
-        pm.registerEvents(new ContainerCloseListener(containerIndexer), this);
-        pm.registerEvents(new HopperTransferListener(containerIndexer), this);
+        pm.registerEvents(new ContainerCloseListener(containerIndexer, containerLocationResolver), this);
+        pm.registerEvents(new HopperTransferListener(containerIndexer, containerLocationResolver), this);
         pm.registerEvents(new ContainerBreakListener(vectorStorage), this);
     }
 
