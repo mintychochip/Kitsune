@@ -295,6 +295,19 @@ public class SupabaseVectorStorage implements VectorStorage {
     }
 
     @Override
+    public CompletableFuture<Void> purgeAll() {
+        return CompletableFuture.runAsync(() -> {
+            try (Connection conn = dataSource.getConnection()) {
+                conn.createStatement().execute("DELETE FROM " + tableName);
+                logger.info("Purged all vectors from Supabase storage");
+            } catch (SQLException e) {
+                logger.log(ChestFindLogger.LogLevel.SEVERE, "Failed to purge all vectors", e);
+                throw new RuntimeException("Purge failed", e);
+            }
+        }, executor);
+    }
+
+    @Override
     public void shutdown() {
         if (dataSource != null) {
             dataSource.close();

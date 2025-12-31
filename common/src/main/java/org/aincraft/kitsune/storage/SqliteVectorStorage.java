@@ -280,6 +280,19 @@ public class SqliteVectorStorage implements VectorStorage {
     }
 
     @Override
+    public CompletableFuture<Void> purgeAll() {
+        return CompletableFuture.runAsync(() -> {
+            try (Connection conn = dataSource.getConnection()) {
+                conn.createStatement().execute("DELETE FROM containers");
+                logger.info("Purged all vectors from SQLite storage");
+            } catch (SQLException e) {
+                logger.log(Level.SEVERE, "Failed to purge all vectors", e);
+                throw new RuntimeException("Purge failed", e);
+            }
+        }, executor);
+    }
+
+    @Override
     public void shutdown() {
         if (dataSource != null) {
             dataSource.close();
