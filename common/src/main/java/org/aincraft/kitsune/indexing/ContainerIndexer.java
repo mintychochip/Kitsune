@@ -47,7 +47,7 @@ public class ContainerIndexer {
 
     /**
      * Schedules indexing of a multi-block or single-block container.
-     * Registers position mappings first, then schedules embedding and indexing.
+     * Gets or creates the container first, then schedules embedding and indexing.
      *
      * @param locations the container locations (primary and all positions)
      * @param serializedItems the serialized items to index
@@ -55,40 +55,39 @@ public class ContainerIndexer {
     public void scheduleIndex(ContainerLocations locations, List<SerializedItem> serializedItems) {
         Location primaryLocation = locations.primaryLocation();
 
-        // Register container position mappings (async)
-        vectorStorage.registerContainerPositions(locations).exceptionally(ex -> {
+        // Get or create container (Phase 2-3 container management)
+        vectorStorage.getOrCreateContainer(locations).thenAccept(containerId -> {
+            synchronized (pendingIndexes) {
+                ScheduledFuture<?> existing = pendingIndexes.get(primaryLocation);
+                if (existing != null && !existing.isDone()) {
+                    existing.cancel(false);
+                }
+
+                ScheduledFuture<?> future = executor.schedule(
+                    () -> performIndex(containerId, serializedItems),
+                    debounceDelayMs,
+                    TimeUnit.MILLISECONDS
+                );
+
+                pendingIndexes.put(primaryLocation, future);
+            }
+        }).exceptionally(ex -> {
             logger.log(Level.WARNING,
-                "Failed to register container positions at " + primaryLocation, ex);
+                "Failed to get or create container at " + primaryLocation, ex);
             return null;
         });
-
-        synchronized (pendingIndexes) {
-            ScheduledFuture<?> existing = pendingIndexes.get(primaryLocation);
-            if (existing != null && !existing.isDone()) {
-                existing.cancel(false);
-            }
-
-            ScheduledFuture<?> future = executor.schedule(
-                () -> performIndex(primaryLocation, serializedItems),
-                debounceDelayMs,
-                TimeUnit.MILLISECONDS
-            );
-
-            pendingIndexes.put(primaryLocation, future);
-        }
     }
 
     /**
      * Performs the actual indexing of container items.
-     * Generates embeddings and stores in vector database.
+     * Generates embeddings and stores in vector database using the container UUID.
      *
-     * @param location the location of the container
+     * @param containerId the UUID of the container (from container management)
      * @param serializedItems the serialized items to index
      */
-    protected void performIndex(Location location, List<SerializedItem> serializedItems) {
-
+    protected void performIndex(java.util.UUID containerId, List<SerializedItem> serializedItems) {
         if (serializedItems.isEmpty()) {
-            vectorStorage.delete(location).exceptionally(ex -> {
+            vectorStorage.deleteContainer(containerId).exceptionally(ex -> {
                 logger.log(Level.WARNING, "Failed to delete empty container", ex);
                 return null;
             });
@@ -107,13 +106,13 @@ public class ContainerIndexer {
             String embeddingText = serialized.embeddingText().toLowerCase();
 
             // Log what we're embedding
-            logger.info("Indexing chunk " + chunkIndex + " at " + location +
+            logger.info("Indexing chunk " + chunkIndex + " for container " + containerId +
                 ": embedding=\"" + embeddingText + "\"");
 
             // Embed the lowercase text, store original in content_text for display
             CompletableFuture<ContainerChunk> chunkFuture = embeddingService.embed(embeddingText, "RETRIEVAL_DOCUMENT")
                 .thenApply(embedding -> new ContainerChunk(
-                    location,
+                    containerId,
                     chunkIndex,
                     embeddingText,  // Store lowercase text that was embedded
                     embedding,
@@ -136,14 +135,9 @@ public class ContainerIndexer {
                 }
                 return chunks;
             })
-            .thenCompose(chunks -> vectorStorage.indexChunks(chunks))
-            .thenRun(() -> {
-                synchronized (pendingIndexes) {
-                    pendingIndexes.remove(location);
-                }
-            })
+            .thenCompose(chunks -> vectorStorage.indexChunks(containerId, chunks))
             .exceptionally(ex -> {
-                logger.log(Level.WARNING, "Failed to index container at " + location, ex);
+                logger.log(Level.WARNING, "Failed to index container " + containerId, ex);
                 return null;
             });
     }

@@ -2,18 +2,17 @@ package org.aincraft.kitsune.model;
 
 import com.google.common.base.Preconditions;
 import java.util.UUID;
-import org.aincraft.kitsune.api.Location;
 import org.jetbrains.annotations.Nullable;
 
 /**
  * Represents an indexed container chunk with an explicit application-generated UUID.
  * This is the primary unit of storage in the vector storage system.
- * Each indexed item has a unique ID that references back to its container location.
+ * Each indexed item has a unique ID that references back to its container.
  * Now includes optional container path for nested container indexing.
  */
 public record IndexedChunk(
     UUID id,
-    Location location,
+    UUID containerId,
     int chunkIndex,
     String contentText,
     float[] embedding,
@@ -22,7 +21,7 @@ public record IndexedChunk(
 ) {
     public IndexedChunk {
         Preconditions.checkNotNull(id, "ID cannot be null");
-        Preconditions.checkNotNull(location, "Location cannot be null");
+        Preconditions.checkNotNull(containerId, "Container ID cannot be null");
         Preconditions.checkNotNull(contentText, "Content text cannot be null");
         Preconditions.checkNotNull(embedding, "Embedding cannot be null");
         Preconditions.checkArgument(chunkIndex >= 0, "Chunk index must be non-negative");
@@ -34,13 +33,13 @@ public record IndexedChunk(
      */
     public IndexedChunk(
         UUID id,
-        Location location,
+        UUID containerId,
         int chunkIndex,
         String contentText,
         float[] embedding,
         long timestamp
     ) {
-        this(id, location, chunkIndex, contentText, embedding, timestamp, null);
+        this(id, containerId, chunkIndex, contentText, embedding, timestamp, null);
     }
 
     /**
@@ -54,11 +53,12 @@ public record IndexedChunk(
         Preconditions.checkNotNull(chunk, "Chunk cannot be null");
         return new IndexedChunk(
             UUID.randomUUID(),
-            chunk.location(),
+            chunk.containerId(),
             chunk.chunkIndex(),
             chunk.contentText(),
             chunk.embedding(),
-            chunk.timestamp()
+            chunk.timestamp(),
+            chunk.containerPath()
         );
     }
 
@@ -74,11 +74,12 @@ public record IndexedChunk(
         Preconditions.checkNotNull(chunk, "Chunk cannot be null");
         return new IndexedChunk(
             id,
-            chunk.location(),
+            chunk.containerId(),
             chunk.chunkIndex(),
             chunk.contentText(),
             chunk.embedding(),
-            chunk.timestamp()
+            chunk.timestamp(),
+            chunk.containerPath()
         );
     }
 
@@ -88,7 +89,7 @@ public record IndexedChunk(
      * @return a ContainerChunk with the same data
      */
     public ContainerChunk toContainerChunk() {
-        return new ContainerChunk(location, chunkIndex, contentText, embedding, timestamp);
+        return new ContainerChunk(containerId, chunkIndex, contentText, embedding, timestamp, containerPath);
     }
 
     /**
@@ -98,7 +99,7 @@ public record IndexedChunk(
      * @return a new IndexedChunk with the updated embedding
      */
     public IndexedChunk withEmbedding(float[] newEmbedding) {
-        return new IndexedChunk(id, location, chunkIndex, contentText, newEmbedding, timestamp, containerPath);
+        return new IndexedChunk(id, containerId, chunkIndex, contentText, newEmbedding, timestamp, containerPath);
     }
 
     /**
@@ -108,7 +109,7 @@ public record IndexedChunk(
      * @return a new IndexedChunk with the updated timestamp
      */
     public IndexedChunk withTimestamp(long newTimestamp) {
-        return new IndexedChunk(id, location, chunkIndex, contentText, embedding, newTimestamp, containerPath);
+        return new IndexedChunk(id, containerId, chunkIndex, contentText, embedding, newTimestamp, containerPath);
     }
 
     /**
@@ -118,6 +119,6 @@ public record IndexedChunk(
      * @return a new IndexedChunk with the updated container path
      */
     public IndexedChunk withContainerPath(@Nullable ContainerPath newContainerPath) {
-        return new IndexedChunk(id, location, chunkIndex, contentText, embedding, timestamp, newContainerPath);
+        return new IndexedChunk(id, containerId, chunkIndex, contentText, embedding, timestamp, newContainerPath);
     }
 }

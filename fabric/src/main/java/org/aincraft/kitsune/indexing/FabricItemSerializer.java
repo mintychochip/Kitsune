@@ -12,6 +12,7 @@ import net.minecraft.registry.Registries;
 import net.minecraft.text.Text;
 import org.aincraft.kitsune.api.ItemTagProviderRegistry;
 import org.aincraft.kitsune.model.ContainerPath;
+import org.aincraft.kitsune.model.NestedContainerRef;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -90,8 +91,20 @@ public class FabricItemSerializer {
             // Handle nested containers (shulker boxes, bundles)
             List<ItemStack> nestedItems = extractNestedItems(item);
             if (!nestedItems.isEmpty()) {
-                String containerName = formatItemName(getItemId(item));
-                ContainerPath nestedPath = path.push(containerName);
+                String containerType = getItemId(item);
+                String containerColor = null;
+                // Extract color from shulker boxes (e.g., "minecraft:red_shulker_box" -> "red")
+                if (containerType.contains("shulker_box")) {
+                    String[] parts = containerType.split("_");
+                    if (parts.length >= 2 && !parts[0].equals("minecraft")) {
+                        containerColor = parts[0];
+                    } else if (containerType.contains("red_")) {
+                        containerColor = "red";
+                    }
+                }
+                String customName = item.hasCustomName() ? item.getName().getString() : null;
+                NestedContainerRef ref = new NestedContainerRef(containerType, containerColor, customName, 0);
+                ContainerPath nestedPath = path.push(ref);
                 chunks.addAll(serializeItemsToChunks(
                         nestedItems.toArray(new ItemStack[0]),
                         nestedPath,

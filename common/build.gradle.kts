@@ -6,6 +6,11 @@ dependencies {
     // Google Guava for Preconditions
     api("com.google.guava:guava:33.0.0-jre")
 
+    // Adventure API for text components
+    api("net.kyori:adventure-api:4.15.0")
+    api("net.kyori:adventure-text-serializer-gson:4.15.0")
+    api("net.kyori:adventure-text-serializer-plain:4.15.0")
+
     // ONNX Runtime for local embeddings
     api("com.microsoft.onnxruntime:onnxruntime:1.19.2")
 

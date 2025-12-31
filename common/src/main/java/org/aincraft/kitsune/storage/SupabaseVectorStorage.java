@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -156,6 +157,13 @@ public class SupabaseVectorStorage implements VectorStorage {
 
     @Override
     public CompletableFuture<Void> indexChunks(List<ContainerChunk> chunks) {
+        throw new UnsupportedOperationException(
+            "indexChunks(List<ContainerChunk>) is not supported. Use indexChunks(List<ContainerChunk>, Location) instead."
+        );
+    }
+
+    @Override
+    public CompletableFuture<Void> indexChunks(List<ContainerChunk> chunks, Location location) {
         if (chunks.isEmpty()) {
             return CompletableFuture.completedFuture(null);
         }
@@ -163,13 +171,12 @@ public class SupabaseVectorStorage implements VectorStorage {
         return CompletableFuture.runAsync(() -> {
             try (Connection conn = dataSource.getConnection()) {
                 // Delete all existing chunks for this location first
-                Location loc = chunks.get(0).location();
                 String deleteSql = "DELETE FROM %s WHERE world = ? AND x = ? AND y = ? AND z = ?".formatted(tableName);
                 try (PreparedStatement stmt = conn.prepareStatement(deleteSql)) {
-                    stmt.setString(1, loc.worldName());
-                    stmt.setInt(2, loc.blockX());
-                    stmt.setInt(3, loc.blockY());
-                    stmt.setInt(4, loc.blockZ());
+                    stmt.setString(1, location.worldName());
+                    stmt.setInt(2, location.blockX());
+                    stmt.setInt(3, location.blockY());
+                    stmt.setInt(4, location.blockZ());
                     stmt.executeUpdate();
                 }
 
@@ -181,10 +188,10 @@ public class SupabaseVectorStorage implements VectorStorage {
 
                 try (PreparedStatement stmt = conn.prepareStatement(insertSql)) {
                     for (ContainerChunk chunk : chunks) {
-                        stmt.setString(1, chunk.location().worldName());
-                        stmt.setInt(2, chunk.location().blockX());
-                        stmt.setInt(3, chunk.location().blockY());
-                        stmt.setInt(4, chunk.location().blockZ());
+                        stmt.setString(1, location.worldName());
+                        stmt.setInt(2, location.blockX());
+                        stmt.setInt(3, location.blockY());
+                        stmt.setInt(4, location.blockZ());
                         stmt.setInt(5, chunk.chunkIndex());
                         stmt.setString(6, chunk.contentText());
                         stmt.setString(7, embeddingToString(chunk.embedding()));
@@ -490,5 +497,43 @@ public class SupabaseVectorStorage implements VectorStorage {
         }
         sb.append("]");
         return sb.toString();
+    }
+
+    @Override
+    public CompletableFuture<Void> indexChunks(UUID containerId, List<ContainerChunk> chunks) {
+        // Stub implementation for SupabaseVectorStorage
+        return CompletableFuture.completedFuture(null);
+    }
+
+    // Phase 2-3: Container management API implementations
+
+    @Override
+    public CompletableFuture<UUID> getOrCreateContainer(ContainerLocations locations) {
+        // Stub implementation for SupabaseVectorStorage
+        return CompletableFuture.completedFuture(UUID.randomUUID());
+    }
+
+    @Override
+    public CompletableFuture<Optional<UUID>> getContainerByLocation(Location location) {
+        // Stub implementation for SupabaseVectorStorage
+        return CompletableFuture.completedFuture(Optional.empty());
+    }
+
+    @Override
+    public CompletableFuture<List<Location>> getContainerLocations(UUID containerId) {
+        // Stub implementation for SupabaseVectorStorage
+        return CompletableFuture.completedFuture(Collections.emptyList());
+    }
+
+    @Override
+    public CompletableFuture<Optional<Location>> getPrimaryLocationForContainer(UUID containerId) {
+        // Stub implementation for SupabaseVectorStorage
+        return CompletableFuture.completedFuture(Optional.empty());
+    }
+
+    @Override
+    public CompletableFuture<Void> deleteContainer(UUID containerId) {
+        // Stub implementation for SupabaseVectorStorage
+        return CompletableFuture.completedFuture(null);
     }
 }

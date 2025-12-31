@@ -1,7 +1,7 @@
 package org.aincraft.kitsune.model;
 
 import com.google.common.base.Preconditions;
-import org.aincraft.kitsune.api.Location;
+import java.util.UUID;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -11,7 +11,7 @@ import org.jetbrains.annotations.Nullable;
  * Can optionally include the path through nested containers where the item was found.
  */
 public record ContainerChunk(
-    Location location,
+    UUID containerId,
     int chunkIndex,
     String contentText,
     float[] embedding,
@@ -19,7 +19,7 @@ public record ContainerChunk(
     @Nullable ContainerPath containerPath
 ) {
     public ContainerChunk {
-        Preconditions.checkNotNull(location, "Location cannot be null");
+        Preconditions.checkNotNull(containerId, "Container ID cannot be null");
         Preconditions.checkNotNull(contentText, "Content text cannot be null");
         Preconditions.checkNotNull(embedding, "Embedding cannot be null");
         Preconditions.checkArgument(chunkIndex >= 0, "Chunk index must be non-negative");
@@ -29,12 +29,12 @@ public record ContainerChunk(
      * Constructor for backward compatibility without containerPath.
      */
     public ContainerChunk(
-        Location location,
+        UUID containerId,
         int chunkIndex,
         String contentText,
         float[] embedding,
         long timestamp
     ) {
-        this(location, chunkIndex, contentText, embedding, timestamp, null);
+        this(containerId, chunkIndex, contentText, embedding, timestamp, null);
     }
 }
