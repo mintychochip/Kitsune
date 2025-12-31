@@ -1,40 +1,60 @@
 package org.aincraft.kitsune.model;
 
+import com.google.common.base.Preconditions;
 import org.aincraft.kitsune.api.LocationData;
+import org.jetbrains.annotations.Nullable;
 import java.util.List;
 
+/**
+ * Represents a search result for a container containing items of interest.
+ *
+ * Can optionally include the path through nested containers where the item was found.
+ */
 public record SearchResult(
     LocationData location,
     List<LocationData> allLocations,
     double score,
     String preview,
-    String fullContent
+    String fullContent,
+    @Nullable ContainerPath containerPath
 ) {
-    // Constructor with full content
+    // Constructor with all fields including containerPath
     public SearchResult {
-        if (location == null) {
-            throw new IllegalArgumentException("Location cannot be null");
-        }
-        if (preview == null) {
-            throw new IllegalArgumentException("Preview cannot be null");
-        }
-        if (score < 0 || score > 1) {
-            throw new IllegalArgumentException("Score must be between 0 and 1");
-        }
+        Preconditions.checkNotNull(location, "Location cannot be null");
+        Preconditions.checkNotNull(preview, "Preview cannot be null");
+        Preconditions.checkArgument(score >= 0 && score <= 1, "Score must be between 0 and 1");
         // allLocations defaults to single location if not provided
         if (allLocations == null) {
             allLocations = List.of(location);
         }
         // fullContent can be null for backwards compatibility
+        // containerPath can be null for backwards compatibility
     }
 
-    // Backwards compatible constructor without allLocations
+    // Backwards compatible constructor with containerPath
+    public SearchResult(
+        LocationData location,
+        List<LocationData> allLocations,
+        double score,
+        String preview,
+        String fullContent,
+        @Nullable ContainerPath containerPath
+    ) {
+        this(location, allLocations, score, preview, fullContent, containerPath);
+    }
+
+    // Backwards compatible constructor without containerPath
+    public SearchResult(LocationData location, List<LocationData> allLocations, double score, String preview, String fullContent) {
+        this(location, allLocations, score, preview, fullContent, null);
+    }
+
+    // Backwards compatible constructor without allLocations or containerPath
     public SearchResult(LocationData location, double score, String preview, String fullContent) {
-        this(location, List.of(location), score, preview, fullContent);
+        this(location, List.of(location), score, preview, fullContent, null);
     }
 
     // Backwards compatible constructor with preview only
     public SearchResult(LocationData location, double score, String preview) {
-        this(location, List.of(location), score, preview, preview);
+        this(location, List.of(location), score, preview, preview, null);
     }
 }
