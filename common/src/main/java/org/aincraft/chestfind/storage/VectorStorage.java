@@ -56,6 +56,12 @@ public interface VectorStorage {
     CompletableFuture<StorageStats> getStats();
 
     /**
+     * Purges all vectors from storage.
+     * @return CompletableFuture that completes when purge is done
+     */
+    CompletableFuture<Void> purgeAll();
+
+    /**
      * Shuts down the storage and releases resources.
      */
     void shutdown();
