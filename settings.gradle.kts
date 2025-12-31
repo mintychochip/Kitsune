@@ -1,4 +1,5 @@
-rootProject.name = "ChestFind"
+rootProject.name = "Kitsune"
 
+include("api")
 include("common")
 include("bukkit")
