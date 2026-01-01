@@ -511,18 +511,81 @@ public class SqliteVectorStorage implements VectorStorage {
         return dotProduct / denominator;
     }
 
+    // UUID to Location mapping for Phase 2-3 API compatibility
+    private final java.util.Map<UUID, Location> containerLocationCache = new java.util.concurrent.ConcurrentHashMap<>();
+
     @Override
     public CompletableFuture<Void> indexChunks(UUID containerId, List<ContainerChunk> chunks) {
-        // Stub implementation for SqliteVectorStorage
-        return CompletableFuture.completedFuture(null);
+        if (chunks.isEmpty()) {
+            return CompletableFuture.completedFuture(null);
+        }
+
+        // Get location from cache
+        Location location = containerLocationCache.get(containerId);
+        if (location == null) {
+            logger.warning("No location found for container " + containerId + ", chunks will not be indexed");
+            return CompletableFuture.completedFuture(null);
+        }
+
+        return CompletableFuture.runAsync(() -> {
+            try (Connection conn = dataSource.getConnection()) {
+                // Delete existing chunks for this location
+                String deleteSql = "DELETE FROM containers WHERE world = ? AND x = ? AND y = ? AND z = ?";
+                try (PreparedStatement stmt = conn.prepareStatement(deleteSql)) {
+                    stmt.setString(1, location.worldName());
+                    stmt.setInt(2, location.blockX());
+                    stmt.setInt(3, location.blockY());
+                    stmt.setInt(4, location.blockZ());
+                    stmt.executeUpdate();
+                }
+
+                // Insert all chunks
+                String insertSql = """
+                    INSERT INTO containers
+                    (world, x, y, z, chunk_index, content_text, embedding, timestamp)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """;
+
+                try (PreparedStatement stmt = conn.prepareStatement(insertSql)) {
+                    for (ContainerChunk chunk : chunks) {
+                        stmt.setString(1, location.worldName());
+                        stmt.setInt(2, location.blockX());
+                        stmt.setInt(3, location.blockY());
+                        stmt.setInt(4, location.blockZ());
+                        stmt.setInt(5, chunk.chunkIndex());
+                        stmt.setString(6, chunk.contentText());
+                        try {
+                            stmt.setBytes(7, serializeEmbedding(chunk.embedding()));
+                        } catch (Exception e) {
+                            throw new SQLException("Failed to serialize embedding", e);
+                        }
+                        stmt.setLong(8, chunk.timestamp());
+                        stmt.addBatch();
+                    }
+                    stmt.executeBatch();
+                }
+
+                logger.info("Indexed " + chunks.size() + " chunks for container at " + location);
+            } catch (SQLException e) {
+                logger.log(Level.WARNING, "Failed to index chunks for container " + containerId, e);
+                throw new RuntimeException("Chunk indexing failed", e);
+            }
+        }, executor);
     }
 
     // Phase 2-3: Container management API implementations
 
     @Override
     public CompletableFuture<UUID> getOrCreateContainer(ContainerLocations locations) {
-        // Stub implementation for SqliteVectorStorage
-        return CompletableFuture.completedFuture(UUID.randomUUID());
+        Location primary = locations.primaryLocation();
+        // Generate deterministic UUID from location
+        String key = primary.worldName() + ":" + primary.blockX() + "," + primary.blockY() + "," + primary.blockZ();
+        UUID containerId = UUID.nameUUIDFromBytes(key.getBytes());
+
+        // Cache the location mapping for later use in indexChunks
+        containerLocationCache.put(containerId, primary);
+
+        return CompletableFuture.completedFuture(containerId);
     }
 
     @Override
