@@ -3,7 +3,8 @@
     "allow": [
       "mcp__claude-context__search_code",
       "Bash(./gradlew clean:*)",
-      "Bash(./gradlew compileJava:*)"
+      "Bash(./gradlew compileJava:*)",
+      "WebFetch(domain:central.sonatype.com)"
     ]
   },
   "enableAllProjectMcpServers": true,

@@ -124,20 +124,30 @@ public class OnnxEmbeddingService implements EmbeddingService {
                 session = env.createSession(modelPath.toString());
 
                 Path tokenizerJsonPath = dataFolder.resolve("models").resolve("tokenizer.json");
-                if (Files.exists(tokenizerJsonPath)) {
-                    tokenizer = HuggingFaceTokenizer.newInstance(tokenizerJsonPath);
-                    logger.info("Loaded tokenizer from tokenizer.json");
-                } else if (Files.exists(vocabPath)) {
-                    Map<String, String> options = new HashMap<>();
-                    options.put("modelMaxLength", String.valueOf(MAX_SEQUENCE_LENGTH));
-                    options.put("addSpecialTokens", "true");
-                    options.put("padding", "false");
-                    options.put("truncation", "true");
-                    tokenizer = HuggingFaceTokenizer.newInstance(vocabPath, options);
-                    logger.info("Loaded tokenizer from vocab.txt");
-                } else {
-                    logger.warning("No tokenizer found");
-                    throw new IllegalStateException("Tokenizer not found");
+
+                // Fix classloader context for DJL native library loading in plugin environments
+                // See: https://github.com/deepjavalibrary/djl/issues/2224
+                ClassLoader originalClassLoader = Thread.currentThread().getContextClassLoader();
+                try {
+                    Thread.currentThread().setContextClassLoader(getClass().getClassLoader());
+
+                    if (Files.exists(tokenizerJsonPath)) {
+                        tokenizer = HuggingFaceTokenizer.newInstance(tokenizerJsonPath);
+                        logger.info("Loaded tokenizer from tokenizer.json");
+                    } else if (Files.exists(vocabPath)) {
+                        Map<String, String> options = new HashMap<>();
+                        options.put("modelMaxLength", String.valueOf(MAX_SEQUENCE_LENGTH));
+                        options.put("addSpecialTokens", "true");
+                        options.put("padding", "false");
+                        options.put("truncation", "true");
+                        tokenizer = HuggingFaceTokenizer.newInstance(vocabPath, options);
+                        logger.info("Loaded tokenizer from vocab.txt");
+                    } else {
+                        logger.warning("No tokenizer found");
+                        throw new IllegalStateException("Tokenizer not found");
+                    }
+                } finally {
+                    Thread.currentThread().setContextClassLoader(originalClassLoader);
                 }
 
                 logger.info("ONNX embedding service initialized with " + modelName + " (" + embeddingDim + " dimensions)");
