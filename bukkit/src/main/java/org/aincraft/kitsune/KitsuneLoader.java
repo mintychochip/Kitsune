@@ -18,7 +18,6 @@ public class KitsuneLoader implements PluginLoader {
     @Override
     public void classloader(@NotNull PluginClasspathBuilder classpathBuilder) {
         MavenLibraryResolver resolver = new MavenLibraryResolver();
-
         // Add Maven Central mirror (required by Paper 1.21.11+)
         resolver.addRepository(new RemoteRepository.Builder(
             "central", "default", MavenLibraryResolver.MAVEN_CENTRAL_DEFAULT_MIRROR
@@ -26,12 +25,12 @@ public class KitsuneLoader implements PluginLoader {
 
         // DJL API
         resolver.addDependency(new Dependency(
-            new DefaultArtifact("ai.djl:api:0.30.0"), null
+            new DefaultArtifact("ai.djl:api:0.31.1"), null
         ));
 
-        // DJL HuggingFace Tokenizers
+        // DJL HuggingFace Tokenizers (includes native library resolution)
         resolver.addDependency(new Dependency(
-            new DefaultArtifact("ai.djl.huggingface:tokenizers:0.30.0"), null
+            new DefaultArtifact("ai.djl.huggingface:tokenizers:0.31.1"), null
         ));
 
         classpathBuilder.addLibrary(resolver);

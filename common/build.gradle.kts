@@ -15,8 +15,8 @@ dependencies {
     api("com.microsoft.onnxruntime:onnxruntime:1.19.2")
 
     // DJL for BERT tokenization
-    api("ai.djl:api:0.30.0")
-    api("ai.djl.huggingface:tokenizers:0.30.0")
+    api("ai.djl:api:0.31.1")
+    api("ai.djl.huggingface:tokenizers:0.31.1")
 
     // HTTP client for external embedding APIs
     api("com.squareup.okhttp3:okhttp:4.12.0")
