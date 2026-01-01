@@ -182,7 +182,7 @@ public class JVectorStorage implements VectorStorage {
     private void loadIndex() throws SQLException, IOException {
         Path indexPath = dataDir.resolve("vectors.idx");
 
-        // Load metadata, ordinal mappings, and embeddings from container_chunks
+        // Load ordinal mappings from container_chunks (vectors come from JVector graph)
         try (Connection conn = dataSource.getConnection();
              ResultSet rs = conn.createStatement().executeQuery(
                  "SELECT id, ordinal FROM container_chunks ORDER BY ordinal")) {
@@ -198,45 +198,57 @@ public class JVectorStorage implements VectorStorage {
                 ordinalToUuid.set(ordinal, uuid);
                 uuidToOrdinal.put(uuid, ordinal);
             }
-
-            // Load embedding vectors from a separate embeddings table if it exists
-            // For now, we'll use the old containers table as fallback for backward compatibility
-            loadEmbeddingsLegacy(conn);
         }
 
-        logger.info("Loaded " + vectors.size() + " vectors from storage");
+        long ordinalCount = ordinalToUuid.stream().filter(u -> u != null).count();
+        logger.info("Loaded " + ordinalCount + " ordinal mappings from SQLite");
 
-        // Count non-null vectors for validation
-        long validVectorCount = vectors.stream().filter(v -> v != null).count();
-        logger.info("Loaded " + validVectorCount + " valid vectors from " + vectors.size() + " total slots");
-
-        // Load existing graph index if it exists
+        // Load existing graph index and vectors from JVector
         if (Files.exists(indexPath)) {
             try {
                 readerSupplier = ReaderSupplierFactory.open(indexPath);
                 graphIndex = OnDiskGraphIndex.load(readerSupplier);
 
-                // Validate graph index is compatible with loaded vectors
                 int graphSize = graphIndex.size();
-                if (graphSize != validVectorCount) {
-                    logger.warning("Graph index size (" + graphSize + ") doesn't match vector count ("
-                        + validVectorCount + "), will rebuild");
-                    graphIndex = null;
-                    if (readerSupplier != null) {
-                        readerSupplier.close();
-                        readerSupplier = null;
+                logger.info("Loaded JVector graph index with " + graphSize + " nodes");
+
+                // Populate vectors from graph's view (JVector persists vectors in the graph file)
+                var graphView = graphIndex.getView();
+                for (int ordinal = 0; ordinal < ordinalToUuid.size(); ordinal++) {
+                    if (ordinalToUuid.get(ordinal) != null && ordinal < graphSize) {
+                        try {
+                            VectorFloat<?> vec = graphView.getVector(ordinal);
+                            if (vec != null) {
+                                vectors.set(ordinal, vec);
+                            }
+                        } catch (Exception e) {
+                            logger.warning("Failed to load vector for ordinal " + ordinal + ": " + e.getMessage());
+                        }
                     }
+                }
+
+                long validVectorCount = vectors.stream().filter(v -> v != null).count();
+                logger.info("Loaded " + validVectorCount + " vectors from JVector graph");
+
+                // Validate graph matches ordinal mappings
+                long expectedCount = ordinalToUuid.stream().filter(u -> u != null).count();
+                if (graphSize != expectedCount) {
+                    logger.warning("Graph size (" + graphSize + ") doesn't match ordinal count ("
+                        + expectedCount + "), will rebuild");
                     indexDirty = true;
-                } else {
-                    logger.info("Loaded existing JVector graph index with " + graphSize + " nodes");
                 }
             } catch (Exception e) {
                 logger.warning("Failed to load existing index, will rebuild: " + e.getMessage());
                 graphIndex = null;
+                if (readerSupplier != null) {
+                    try { readerSupplier.close(); } catch (Exception ignored) {}
+                    readerSupplier = null;
+                }
                 indexDirty = true;
             }
-        } else if (!vectors.isEmpty()) {
-            // We have vectors but no index - mark for rebuild
+        } else if (!ordinalToUuid.isEmpty()) {
+            // We have ordinal mappings but no index - mark for rebuild
+            logger.info("No graph index found, will rebuild from stored data");
             indexDirty = true;
         }
     }
@@ -408,6 +420,11 @@ public class JVectorStorage implements VectorStorage {
                     vectors.set(ordinal, null);
                 }
             }
+        }
+
+        // Mark index as dirty so it gets rebuilt before next search
+        if (!toDelete.isEmpty()) {
+            indexDirty = true;
         }
     }
 

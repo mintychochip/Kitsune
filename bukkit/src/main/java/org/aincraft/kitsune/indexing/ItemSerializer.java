@@ -6,6 +6,7 @@ import com.google.gson.JsonObject;
 import io.papermc.paper.datacomponent.DataComponentTypes;
 import io.papermc.paper.datacomponent.item.*;
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
 import org.bukkit.Material;
 import org.bukkit.enchantments.Enchantment;
@@ -40,21 +41,35 @@ public class ItemSerializer {
     /**
      * Serialize items into chunks - one item per chunk.
      * Returns both plain text (for embedding) and JSON (for storage).
+     * Also extracts nested items from bundles and shulker boxes.
      * @param items Array of items to serialize
      * @return List of SerializedItem with embeddingText and storageJson
      */
     public static List<SerializedItem> serializeItemsToChunks(ItemStack[] items) {
         List<SerializedItem> chunks = new ArrayList<>();
+        serializeItemsRecursive(items, chunks, new JsonArray());
+        return chunks;
+    }
 
+    /**
+     * Recursively serialize items, including nested container contents.
+     * @param items Items to serialize
+     * @param chunks Output list
+     * @param containerPath JSON array tracking the nesting path
+     */
+    private static void serializeItemsRecursive(ItemStack[] items, List<SerializedItem> chunks, JsonArray containerPath) {
         for (ItemStack item : items) {
             if (item == null || item.getType().isAir()) {
                 continue;
             }
 
             JsonObject itemJson = createItemJson(item);
-
-            // Plain text for embedding: "Iron Sword (weapon, iron, sword)"
             String embeddingText = createEmbeddingText(item, itemJson);
+
+            // Add container path to metadata if nested
+            if (containerPath.size() > 0) {
+                itemJson.add("container_path", containerPath.deepCopy());
+            }
 
             // JSON for storage
             JsonArray singleItemArray = new JsonArray();
@@ -62,9 +77,59 @@ public class ItemSerializer {
             String storageJson = gson.toJson(singleItemArray);
 
             chunks.add(new SerializedItem(embeddingText, storageJson));
+
+            // Extract nested items from bundles
+            if (item.hasData(DataComponentTypes.BUNDLE_CONTENTS)) {
+                var bundleContents = item.getData(DataComponentTypes.BUNDLE_CONTENTS);
+                if (bundleContents != null) {
+                    List<ItemStack> nestedItems = bundleContents.contents();
+                    if (!nestedItems.isEmpty()) {
+                        JsonArray newPath = containerPath.deepCopy();
+                        newPath.add(buildContainerPathEntry(item, "bundle"));
+                        serializeItemsRecursive(nestedItems.toArray(new ItemStack[0]), chunks, newPath);
+                    }
+                }
+            }
+
+            // Extract nested items from shulker boxes / containers
+            if (item.hasData(DataComponentTypes.CONTAINER)) {
+                var containerContents = item.getData(DataComponentTypes.CONTAINER);
+                if (containerContents != null) {
+                    List<ItemStack> nestedItems = containerContents.contents();
+                    if (!nestedItems.isEmpty()) {
+                        JsonArray newPath = containerPath.deepCopy();
+                        newPath.add(buildContainerPathEntry(item, "shulker_box"));
+                        serializeItemsRecursive(nestedItems.toArray(new ItemStack[0]), chunks, newPath);
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Build a container path entry for nested item tracking.
+     */
+    private static JsonObject buildContainerPathEntry(ItemStack container, String containerType) {
+        JsonObject entry = new JsonObject();
+        entry.addProperty("type", containerType);
+
+        // Add color for shulkers
+        String materialName = container.getType().name();
+        if (materialName.contains("SHULKER_BOX") && !materialName.equals("SHULKER_BOX")) {
+            String color = materialName.replace("_SHULKER_BOX", "").toLowerCase();
+            entry.addProperty("color", color);
         }
 
-        return chunks;
+        // Add custom name if present
+        if (container.hasData(DataComponentTypes.CUSTOM_NAME)) {
+            Component customName = container.getData(DataComponentTypes.CUSTOM_NAME);
+            if (customName != null) {
+                String name = PlainTextComponentSerializer.plainText().serialize(customName);
+                entry.addProperty("name", name);
+            }
+        }
+
+        return entry;
     }
 
     /**
@@ -529,16 +594,26 @@ public class ItemSerializer {
     }
 
     private static void extractNames(ItemStack item, JsonObject itemObj) {
+        MiniMessage miniMessage = MiniMessage.miniMessage();
+
+        // Store material for display
+        itemObj.addProperty("material", item.getType().name());
+
         if (item.hasData(DataComponentTypes.CUSTOM_NAME)) {
             Component customName = item.getData(DataComponentTypes.CUSTOM_NAME);
             String plainText = PlainTextComponentSerializer.plainText().serialize(customName);
             itemObj.addProperty("custom_name", plainText);
-        }
-
-        if (item.hasData(DataComponentTypes.ITEM_NAME)) {
+            // Store MiniMessage format for display
+            itemObj.addProperty("display_name", miniMessage.serialize(customName));
+        } else if (item.hasData(DataComponentTypes.ITEM_NAME)) {
             Component itemName = item.getData(DataComponentTypes.ITEM_NAME);
             String plainText = PlainTextComponentSerializer.plainText().serialize(itemName);
             itemObj.addProperty("item_name", plainText);
+            // Store MiniMessage format for display
+            itemObj.addProperty("display_name", miniMessage.serialize(itemName));
+        } else {
+            // Default to formatted material name
+            itemObj.addProperty("display_name", formatItemName(item.getType().name()));
         }
     }
 

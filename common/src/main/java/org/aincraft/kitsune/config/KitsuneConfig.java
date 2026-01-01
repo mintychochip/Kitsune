@@ -20,7 +20,7 @@ public class KitsuneConfig {
         return switch (provider) {
             case "openai" -> getOpenAIModel();
             case "google" -> getGoogleModel();
-            default -> "all-MiniLM-L6-v2"; // Default ONNX model
+            default -> getOnnxModel(); // ONNX model from config
         };
     }
 

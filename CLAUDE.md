@@ -6,8 +6,6 @@ Provide concise feedback, sacrifice grammar for the sake of concision.
 
 You can ONLY implement using multiple paper-plugin-engineer subagents.
 
-You can ONLY implement the feature in a new subtree and must merge it after to consider the task as complete.
-
 Assume the code base is index and whenever searching you can only use claude-context search_code to search code base.
 
 Always use claude-context when you need to locate anything in the codebase.

@@ -51,11 +51,11 @@ public class ContainerBreakListener implements Listener {
                     });
             })
             .thenRun(() -> {
-                // If there was another half, schedule re-indexing after the block break completes
-                if (otherHalf != null && otherHalf.getState() instanceof Container) {
+                // If there was another half, schedule re-indexing on main thread
+                if (otherHalf != null) {
                     // Delay by 1 tick to let the block break complete and chest become single
                     plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
-                        // Re-check that the other half is still a container (now single chest)
+                        // Check on main thread that the other half is still a container
                         if (otherHalf.getState() instanceof Container container) {
                             indexer.scheduleIndex(otherHalf.getLocation(), container.getInventory().getContents());
                         }

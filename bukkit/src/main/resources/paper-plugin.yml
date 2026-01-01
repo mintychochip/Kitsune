@@ -1,4 +1,4 @@
-name: Kitsune
+name: KitsuneSS
 version: 1.0-SNAPSHOT
 main: org.aincraft.kitsune.BukkitKitsuneMain
 bootstrapper: org.aincraft.kitsune.KitsuneBootstrap

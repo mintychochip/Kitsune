@@ -15,6 +15,7 @@ import org.aincraft.kitsune.embedding.EmbeddingService;
 import org.aincraft.kitsune.embedding.EmbeddingServiceFactory;
 import org.aincraft.kitsune.indexing.BukkitContainerIndexer;
 import org.aincraft.kitsune.indexing.ItemTagProviderRegistryImpl;
+import org.aincraft.kitsune.listener.ChestPlaceListener;
 import org.aincraft.kitsune.listener.ContainerBreakListener;
 import org.aincraft.kitsune.listener.ContainerCloseListener;
 import org.aincraft.kitsune.listener.HopperTransferListener;
@@ -133,8 +134,9 @@ public final class BukkitKitsuneMain extends JavaPlugin {
         var pm = getServer().getPluginManager();
         var locationResolver = new BukkitContainerLocationResolver();
         pm.registerEvents(new ContainerCloseListener(containerIndexer, locationResolver), this);
-        pm.registerEvents(new HopperTransferListener(containerIndexer, locationResolver), this);
+        pm.registerEvents(new HopperTransferListener(containerIndexer, locationResolver, this), this);
         pm.registerEvents(new ContainerBreakListener(vectorStorage, containerIndexer, this), this);
+        pm.registerEvents(new ChestPlaceListener(locationResolver, containerIndexer, this), this);
     }
 
     private void registerCommands(CommandDispatcher<CommandSourceStack> dispatcher) {
@@ -264,7 +266,7 @@ public final class BukkitKitsuneMain extends JavaPlugin {
                 return;
             }
 
-            source.getSender().sendMessage("§6Found " + filteredResults.size() + " containers:");
+            source.getSender().sendMessage("§6Search Results:");
             for (var result : filteredResults) {
                 // Convert LocationData to Bukkit Location
                 Location bukkitLoc = BukkitLocationFactory.toBukkitLocation(result.location());
@@ -277,18 +279,19 @@ public final class BukkitKitsuneMain extends JavaPlugin {
                     continue;
                 }
 
-                String coords = String.format("§7[§f%d, %d, %d§7]",
+                // Extract display name from JSON content
+                String displayName = extractDisplayName(result.fullContent());
+
+                String coords = String.format("%d, %d, %d",
                     result.location().blockX(),
                     result.location().blockY(),
                     result.location().blockZ());
                 String world = result.location().worldName();
-                String distance = player != null
-                    ? String.format("§7(%.1f blocks)", bukkitLoc.distance(player.getLocation()))
-                    : "";
-                String score = String.format("§a%.1f%%", result.score() * 100);
 
-                source.getSender().sendMessage(coords + " §8" + world + " " + distance + " " + score);
-                source.getSender().sendMessage("  §7" + result.preview());
+                // Format: Item Name → Chest (x, y, z, "world")
+                source.getSender().sendMessage(
+                    "§f" + displayName + " §7➜ Chest §8(§f" + coords + "§8, §7\"" + world + "\"§8)"
+                );
 
                 // Add visual highlight for players
                 if (player != null && player.isOnline()) {
@@ -302,6 +305,59 @@ public final class BukkitKitsuneMain extends JavaPlugin {
         });
 
         return 1;
+    }
+
+    /**
+     * Extract display name from JSON content.
+     * Falls back to item name if display_name not found.
+     */
+    private String extractDisplayName(String jsonContent) {
+        if (jsonContent == null || jsonContent.isEmpty()) {
+            getLogger().warning("extractDisplayName: content is null or empty");
+            return "Unknown Item";
+        }
+        try {
+            var gson = new com.google.gson.Gson();
+            var jsonArray = gson.fromJson(jsonContent, com.google.gson.JsonArray.class);
+            if (jsonArray != null && jsonArray.size() > 0) {
+                var itemObj = jsonArray.get(0).getAsJsonObject();
+                if (itemObj.has("display_name")) {
+                    String displayName = itemObj.get("display_name").getAsString();
+                    if (displayName != null && !displayName.isEmpty()) {
+                        return displayName;
+                    }
+                }
+                if (itemObj.has("name")) {
+                    String name = itemObj.get("name").getAsString();
+                    if (name != null && !name.isEmpty()) {
+                        return name;
+                    }
+                }
+                // Fall back to material
+                if (itemObj.has("material")) {
+                    String material = itemObj.get("material").getAsString();
+                    return formatMaterialName(material);
+                }
+            }
+            getLogger().warning("extractDisplayName: no valid name found in JSON: " + jsonContent.substring(0, Math.min(100, jsonContent.length())));
+        } catch (Exception e) {
+            getLogger().warning("extractDisplayName: failed to parse JSON: " + e.getMessage());
+        }
+        return "Unknown Item";
+    }
+
+    private String formatMaterialName(String material) {
+        if (material == null) return "Unknown Item";
+        // Convert DIAMOND_PICKAXE to Diamond Pickaxe
+        String[] words = material.toLowerCase().split("_");
+        StringBuilder sb = new StringBuilder();
+        for (String word : words) {
+            if (!word.isEmpty()) {
+                if (sb.length() > 0) sb.append(" ");
+                sb.append(Character.toUpperCase(word.charAt(0))).append(word.substring(1));
+            }
+        }
+        return sb.toString();
     }
 
     private int executeFillChest(Player player) {
