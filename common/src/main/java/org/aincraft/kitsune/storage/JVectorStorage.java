@@ -606,33 +606,48 @@ public class JVectorStorage implements VectorStorage {
             if (ordinalsChanged) {
                 try (Connection conn = dataSource.getConnection()) {
                     conn.setAutoCommit(false);
-                    try (PreparedStatement stmt = conn.prepareStatement(
-                            "UPDATE container_chunks SET ordinal = ? WHERE ordinal = ?")) {
-                        // Two-phase update to avoid UNIQUE constraint conflicts:
-                        // Phase 1: Offset all ordinals to negative (temporary)
-                        for (var entry : oldToNew.entrySet()) {
-                            int oldOrd = entry.getKey();
-                            int newOrd = entry.getValue();
-                            if (oldOrd != newOrd) {
-                                stmt.setInt(1, -oldOrd - 1); // temporary negative
-                                stmt.setInt(2, oldOrd);
-                                stmt.addBatch();
-                            }
+                    try {
+                        // Delete orphan rows not tracked in memory
+                        if (oldToNew.isEmpty()) {
+                            // If no vectors in memory, delete all rows
+                            conn.createStatement().executeUpdate("DELETE FROM container_chunks");
+                        } else {
+                            // Delete rows with ordinals not in oldToNew keySet
+                            String ordinalsList = oldToNew.keySet().stream()
+                                .map(String::valueOf)
+                                .collect(java.util.stream.Collectors.joining(","));
+                            String deleteSql = "DELETE FROM container_chunks WHERE ordinal NOT IN (" + ordinalsList + ")";
+                            conn.createStatement().executeUpdate(deleteSql);
                         }
-                        stmt.executeBatch();
-                        stmt.clearBatch();
 
-                        // Phase 2: Set final ordinals from temporary negatives
-                        for (var entry : oldToNew.entrySet()) {
-                            int oldOrd = entry.getKey();
-                            int newOrd = entry.getValue();
-                            if (oldOrd != newOrd) {
-                                stmt.setInt(1, newOrd);
-                                stmt.setInt(2, -oldOrd - 1); // from temporary
-                                stmt.addBatch();
+                        try (PreparedStatement stmt = conn.prepareStatement(
+                                "UPDATE container_chunks SET ordinal = ? WHERE ordinal = ?")) {
+                            // Two-phase update to avoid UNIQUE constraint conflicts:
+                            // Phase 1: Offset all ordinals to negative (temporary)
+                            for (var entry : oldToNew.entrySet()) {
+                                int oldOrd = entry.getKey();
+                                int newOrd = entry.getValue();
+                                if (oldOrd != newOrd) {
+                                    stmt.setInt(1, -oldOrd - 1); // temporary negative
+                                    stmt.setInt(2, oldOrd);
+                                    stmt.addBatch();
+                                }
                             }
+                            stmt.executeBatch();
+                            stmt.clearBatch();
+
+                            // Phase 2: Set final ordinals from temporary negatives
+                            for (var entry : oldToNew.entrySet()) {
+                                int oldOrd = entry.getKey();
+                                int newOrd = entry.getValue();
+                                if (oldOrd != newOrd) {
+                                    stmt.setInt(1, newOrd);
+                                    stmt.setInt(2, -oldOrd - 1); // from temporary
+                                    stmt.addBatch();
+                                }
+                            }
+                            stmt.executeBatch();
                         }
-                        stmt.executeBatch();
                         conn.commit();
                     } catch (SQLException e) {
                         conn.rollback();
