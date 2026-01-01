@@ -31,8 +31,21 @@ public class BukkitContainerIndexer extends ContainerIndexer {
     }
 
     /**
-     * Bukkit-specific wrapper for scheduling index by Location.
-     * Converts Bukkit Location to platform-agnostic LocationData and serializes items.
+     * Bukkit-specific wrapper for scheduling index by ContainerLocations.
+     * Properly handles multi-block containers like double chests.
+     *
+     * @param locations the container locations (supports multi-block)
+     * @param items the Bukkit items to index
+     */
+    public void scheduleIndex(ContainerLocations locations, ItemStack[] items) {
+        List<SerializedItem> serializedItems = ItemSerializer.serializeItemsToChunks(items);
+        scheduleIndex(locations, serializedItems);
+    }
+
+    /**
+     * Bukkit-specific wrapper for scheduling index by single Location.
+     * For single-block containers only. Use scheduleIndex(ContainerLocations, ItemStack[])
+     * for multi-block containers like double chests.
      *
      * @param location the Bukkit location
      * @param items the Bukkit items to index

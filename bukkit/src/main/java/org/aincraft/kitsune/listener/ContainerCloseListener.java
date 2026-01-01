@@ -6,7 +6,6 @@ import java.util.UUID;
 import org.aincraft.kitsune.api.ContainerLocations;
 import org.aincraft.kitsune.indexing.BukkitContainerIndexer;
 import org.aincraft.kitsune.util.ContainerLocationResolver;
-import org.aincraft.kitsune.util.LocationConverter;
 import org.bukkit.Location;
 import org.bukkit.block.Container;
 import org.bukkit.event.EventHandler;
@@ -60,10 +59,7 @@ public class ContainerCloseListener implements Listener {
 
         // If no snapshot, player didn't open it normally - re-index anyway
         if (snapshot == null) {
-            Location primaryLocation = LocationConverter.toBukkitLocation(locations.primaryLocation());
-            if (primaryLocation != null) {
-                containerIndexer.scheduleIndex(primaryLocation, event.getInventory().getContents());
-            }
+            containerIndexer.scheduleIndex(locations, event.getInventory().getContents());
             return;
         }
 
@@ -73,11 +69,8 @@ public class ContainerCloseListener implements Listener {
             return; // No changes, skip indexing
         }
 
-        // State changed - re-index using primary location
-        Location primaryLocation = LocationConverter.toBukkitLocation(locations.primaryLocation());
-        if (primaryLocation != null) {
-            containerIndexer.scheduleIndex(primaryLocation, currentContents);
-        }
+        // State changed - re-index with full ContainerLocations (handles multi-block)
+        containerIndexer.scheduleIndex(locations, currentContents);
     }
 
     private boolean inventoriesEqual(ItemStack[] original, ItemStack[] current) {
