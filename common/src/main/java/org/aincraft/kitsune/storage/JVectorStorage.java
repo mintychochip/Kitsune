@@ -1117,11 +1117,19 @@ public class JVectorStorage implements VectorStorage {
             indexLock.writeLock().lock();
             try (Connection conn = dataSource.getConnection()) {
                 // Try to find existing container by any location
+                UUID existingContainerId = null;
                 for (Location loc : locations.allLocations()) {
                     Optional<UUID> existing = getContainerByLocationInternal(conn, loc);
                     if (existing.isPresent()) {
-                        return existing.get();
+                        existingContainerId = existing.get();
+                        break;
                     }
+                }
+
+                if (existingContainerId != null) {
+                    // Found existing container - update locations (handles single→double chest)
+                    updateContainerLocations(conn, existingContainerId, locations);
+                    return existingContainerId;
                 }
 
                 // Not found, create new container
@@ -1129,23 +1137,7 @@ public class JVectorStorage implements VectorStorage {
                 ensureContainerExists(conn, newContainerId);
 
                 // Register all locations for this container
-                Location primaryLoc = locations.primaryLocation();
-                String sql = """
-                    INSERT INTO container_locations (container_id, world, x, y, z, is_primary)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                """;
-                try (PreparedStatement stmt = conn.prepareStatement(sql)) {
-                    for (Location loc : locations.allLocations()) {
-                        stmt.setString(1, newContainerId.toString());
-                        stmt.setString(2, loc.worldName());
-                        stmt.setInt(3, loc.blockX());
-                        stmt.setInt(4, loc.blockY());
-                        stmt.setInt(5, loc.blockZ());
-                        stmt.setInt(6, loc.equals(primaryLoc) ? 1 : 0);
-                        stmt.addBatch();
-                    }
-                    stmt.executeBatch();
-                }
+                updateContainerLocations(conn, newContainerId, locations);
 
                 return newContainerId;
             } catch (SQLException e) {
@@ -1155,6 +1147,38 @@ public class JVectorStorage implements VectorStorage {
                 indexLock.writeLock().unlock();
             }
         }, executor);
+    }
+
+    /**
+     * Updates container locations, replacing existing locations with the new set.
+     * Handles single→double chest transitions by adding new locations.
+     */
+    private void updateContainerLocations(Connection conn, UUID containerId, ContainerLocations locations) throws SQLException {
+        // Delete existing locations
+        String deleteSql = "DELETE FROM container_locations WHERE container_id = ?";
+        try (PreparedStatement stmt = conn.prepareStatement(deleteSql)) {
+            stmt.setString(1, containerId.toString());
+            stmt.executeUpdate();
+        }
+
+        // Insert all locations
+        Location primaryLoc = locations.primaryLocation();
+        String insertSql = """
+            INSERT INTO container_locations (container_id, world, x, y, z, is_primary)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """;
+        try (PreparedStatement stmt = conn.prepareStatement(insertSql)) {
+            for (Location loc : locations.allLocations()) {
+                stmt.setString(1, containerId.toString());
+                stmt.setString(2, loc.worldName());
+                stmt.setInt(3, loc.blockX());
+                stmt.setInt(4, loc.blockY());
+                stmt.setInt(5, loc.blockZ());
+                stmt.setInt(6, loc.equals(primaryLoc) ? 1 : 0);
+                stmt.addBatch();
+            }
+            stmt.executeBatch();
+        }
     }
 
     @Override
