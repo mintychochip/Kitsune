@@ -172,28 +172,37 @@ public class OnnxEmbeddingService implements EmbeddingService {
                     throw new IllegalStateException("ONNX session or tokenizer not initialized");
                 }
 
+                // Add task prefix for nomic models (required for proper embeddings)
+                String prefixedText = addTaskPrefix(text, taskType);
+
                 // Tokenize text
-                Encoding encoding = tokenizer.encode(text);
+                Encoding encoding = tokenizer.encode(prefixedText);
                 long[] inputIds = encoding.getIds();
                 long[] attentionMask = encoding.getAttentionMask();
+                long[] tokenTypeIds = encoding.getTypeIds();
 
-                // Create tensors
+                // Create tensors - batch size of 1
                 long[][] inputIdsTensor = new long[1][inputIds.length];
                 long[][] attentionMaskTensor = new long[1][attentionMask.length];
+                long[][] tokenTypeIdsTensor = new long[1][tokenTypeIds.length];
 
                 inputIdsTensor[0] = inputIds;
                 attentionMaskTensor[0] = attentionMask;
+                tokenTypeIdsTensor[0] = tokenTypeIds;
 
                 Map<String, OnnxTensor> inputs = new HashMap<>();
                 OnnxTensor inputTensor = OnnxTensor.createTensor(env, inputIdsTensor);
                 OnnxTensor attentionTensor = OnnxTensor.createTensor(env, attentionMaskTensor);
+                OnnxTensor tokenTypeTensor = OnnxTensor.createTensor(env, tokenTypeIdsTensor);
 
                 inputs.put("input_ids", inputTensor);
                 inputs.put("attention_mask", attentionTensor);
+                inputs.put("token_type_ids", tokenTypeTensor);
 
                 try (var outputs = session.run(inputs)) {
                     inputTensor.close();
                     attentionTensor.close();
+                    tokenTypeTensor.close();
 
                     if (outputs == null) {
                         throw new RuntimeException("No output from ONNX model");
@@ -254,6 +263,21 @@ public class OnnxEmbeddingService implements EmbeddingService {
                 embedding[i] /= norm;
             }
         }
+    }
+
+    /**
+     * Adds task prefix required by nomic-embed-text models.
+     * See: https://huggingface.co/nomic-ai/nomic-embed-text-v1.5
+     */
+    private String addTaskPrefix(String text, String taskType) {
+        // Map internal task types to nomic prefixes
+        return switch (taskType) {
+            case "RETRIEVAL_QUERY" -> "search_query: " + text;
+            case "RETRIEVAL_DOCUMENT" -> "search_document: " + text;
+            case "CLUSTERING" -> "clustering: " + text;
+            case "CLASSIFICATION" -> "classification: " + text;
+            default -> "search_document: " + text;
+        };
     }
 
     @Override
