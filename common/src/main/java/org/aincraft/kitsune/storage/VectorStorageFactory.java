@@ -18,19 +18,17 @@ public class VectorStorageFactory {
 
         return switch (provider) {
             case "supabase" -> new SupabaseVectorStorage(logger, config);
-            case "sqlite" -> {
-                String dbPath = dataFolder.getDataFolder().resolve(config.getSqlitePath()).toString();
-                yield new SqliteVectorStorage(logger, dbPath);
-            }
-            case "jvector" -> {
+            case "sqlite", "local" -> {
+                // Hybrid storage: SQLite for metadata, JVector for vector search
                 Path dataDir = dataFolder.getDataFolder();
                 int dimension = config.getEmbeddingDimension();
                 yield new JVectorStorage(logger, dataDir, dimension);
             }
             default -> {
-                logger.warning("Unknown storage provider: " + provider + ", using SQLite");
-                String dbPath = dataFolder.getDataFolder().resolve(config.getSqlitePath()).toString();
-                yield new SqliteVectorStorage(logger, dbPath);
+                logger.warning("Unknown storage provider: " + provider + ", using local storage");
+                Path dataDir = dataFolder.getDataFolder();
+                int dimension = config.getEmbeddingDimension();
+                yield new JVectorStorage(logger, dataDir, dimension);
             }
         };
     }

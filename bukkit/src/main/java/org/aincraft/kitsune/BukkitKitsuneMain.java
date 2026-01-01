@@ -134,7 +134,7 @@ public final class BukkitKitsuneMain extends JavaPlugin {
         var locationResolver = new BukkitContainerLocationResolver();
         pm.registerEvents(new ContainerCloseListener(containerIndexer, locationResolver), this);
         pm.registerEvents(new HopperTransferListener(containerIndexer, locationResolver), this);
-        pm.registerEvents(new ContainerBreakListener(vectorStorage), this);
+        pm.registerEvents(new ContainerBreakListener(vectorStorage, containerIndexer, this), this);
     }
 
     private void registerCommands(CommandDispatcher<CommandSourceStack> dispatcher) {
@@ -255,9 +255,8 @@ public final class BukkitKitsuneMain extends JavaPlugin {
             results = results.subList(0, Math.min(limit, results.size()));
 
             // Filter results by minimum similarity threshold
-            // 78% threshold filters out weak/generic matches like "test"
             var filteredResults = results.stream()
-                .filter(r -> r.score() > 0.78)
+                .filter(r -> r.score() > 0.675)
                 .toList();
 
             if (filteredResults.isEmpty()) {

@@ -30,6 +30,12 @@ import org.aincraft.kitsune.model.ContainerDocument;
 import org.aincraft.kitsune.model.SearchResult;
 import org.aincraft.kitsune.model.StorageStats;
 
+/**
+ * @deprecated Use {@link JVectorStorage} instead. This class uses brute-force
+ * cosine similarity and an outdated schema. JVectorStorage provides faster ANN
+ * search with a properly normalized schema.
+ */
+@Deprecated
 public class SqliteVectorStorage implements VectorStorage {
     private final Logger logger;
     private final String dbPath;

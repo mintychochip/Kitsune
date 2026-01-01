@@ -42,12 +42,9 @@ embedding:
 
 # Storage Configuration
 storage:
-  # Provider: "sqlite" (local, recommended) or "supabase"
-  provider: "sqlite"
-
-  # SQLite settings
-  sqlite:
-    path: "kitsune.db"
+  # Provider: "local" (SQLite + JVector hybrid) or "supabase"
+  # Local uses SQLite for metadata and JVector for fast vector search
+  provider: "local"
 
   # Supabase settings (only used if provider is "supabase")
   supabase:
