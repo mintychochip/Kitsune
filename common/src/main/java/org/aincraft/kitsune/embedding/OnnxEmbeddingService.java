@@ -12,9 +12,12 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import okhttp3.OkHttpClient;
 import org.aincraft.kitsune.config.KitsuneConfig;
+import org.aincraft.kitsune.embedding.download.*;
 import org.aincraft.kitsune.KitsunePlatform;
 
 public class OnnxEmbeddingService implements EmbeddingService {
@@ -29,15 +32,83 @@ public class OnnxEmbeddingService implements EmbeddingService {
     private final int embeddingDim;
     private static final int MAX_SEQUENCE_LENGTH = 512;
 
+    private final KitsuneConfig config;
+    private final boolean autoDownloadEnabled;
+    private OkHttpClient httpClient;
+    private HuggingFaceModelDownloader downloader;
+
     public OnnxEmbeddingService(KitsuneConfig config, Logger logger, KitsunePlatform dataFolderProvider) {
         this.logger = logger;
         this.dataFolderProvider = dataFolderProvider;
+        this.config = config;
         this.modelName = config.getOnnxModel();
         this.embeddingDim = config.getEmbeddingDimension();
+        this.autoDownloadEnabled = config.isOnnxAutoDownloadEnabled();
     }
 
     @Override
     public CompletableFuture<Void> initialize() {
+        return ensureModelAvailable()
+            .thenCompose(v -> doInitialize());
+    }
+
+    private CompletableFuture<Void> ensureModelAvailable() {
+        Path dataFolder = dataFolderProvider.getDataFolder();
+        Path modelsDir = dataFolder.resolve("models");
+        Path modelPath = modelsDir.resolve(modelName + ".onnx");
+        Path tokenizerPath = modelsDir.resolve("tokenizer.json");
+
+        // If both files exist, skip download
+        if (Files.exists(modelPath) && Files.exists(tokenizerPath)) {
+            logger.info("ONNX model and tokenizer found locally");
+            return CompletableFuture.completedFuture(null);
+        }
+
+        // If auto-download disabled, fail
+        if (!autoDownloadEnabled) {
+            logger.warning("Model files missing and auto-download is disabled");
+            return CompletableFuture.failedFuture(
+                new IllegalStateException("ONNX model not found and auto-download is disabled"));
+        }
+
+        // Get model spec from registry or config
+        ModelSpec spec = getModelSpec();
+        if (spec == null) {
+            return CompletableFuture.failedFuture(
+                new IllegalStateException("Unknown model: " + modelName + ". Configure repository in config."));
+        }
+
+        // Initialize downloader and download
+        logger.info("Model files missing, downloading from Hugging Face...");
+        initializeDownloader();
+        DownloadProgressListener listener = new ConsoleProgressReporter(logger);
+        return downloader.downloadModel(spec, modelsDir, listener);
+    }
+
+    private ModelSpec getModelSpec() {
+        // Check if custom repository is configured
+        String customRepo = config.getOnnxRepository();
+        if (customRepo != null && !customRepo.isEmpty()) {
+            String modelPath = config.getOnnxModelPath();
+            String tokenizerPath = config.getOnnxTokenizerPath();
+            if (modelPath.isEmpty()) modelPath = "onnx/model.onnx";
+            if (tokenizerPath.isEmpty()) tokenizerPath = "tokenizer.json";
+            return ModelRegistry.fromCustomConfig(modelName, customRepo, modelPath, tokenizerPath, embeddingDim);
+        }
+        // Lookup from registry
+        return ModelRegistry.getSpec(modelName).orElse(null);
+    }
+
+    private void initializeDownloader() {
+        httpClient = new OkHttpClient.Builder()
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(config.getDownloadTimeoutSeconds(), TimeUnit.SECONDS)
+            .build();
+        downloader = new HuggingFaceModelDownloader(httpClient, logger, config.getDownloadRetries());
+    }
+
+    private CompletableFuture<Void> doInitialize() {
+        // Move the existing initialize() logic here (lines 41-84)
         return CompletableFuture.supplyAsync(() -> {
             try {
                 env = OrtEnvironment.getEnvironment();
@@ -47,20 +118,16 @@ public class OnnxEmbeddingService implements EmbeddingService {
 
                 if (!Files.exists(modelPath)) {
                     logger.warning("ONNX model not found at " + modelPath);
-                    logger.warning("Please download " + modelName + ".onnx and place it in plugins/Kitsune/models/");
                     throw new IllegalStateException("ONNX model not found");
                 }
 
-                // Initialize ONNX session
                 session = env.createSession(modelPath.toString());
 
-                // Try to initialize tokenizer from tokenizer.json (preferred for all-MiniLM)
                 Path tokenizerJsonPath = dataFolder.resolve("models").resolve("tokenizer.json");
                 if (Files.exists(tokenizerJsonPath)) {
                     tokenizer = HuggingFaceTokenizer.newInstance(tokenizerJsonPath);
                     logger.info("Loaded tokenizer from tokenizer.json");
                 } else if (Files.exists(vocabPath)) {
-                    // Fallback to vocab.txt (legacy BERT tokenization)
                     Map<String, String> options = new HashMap<>();
                     options.put("modelMaxLength", String.valueOf(MAX_SEQUENCE_LENGTH));
                     options.put("addSpecialTokens", "true");
@@ -69,9 +136,7 @@ public class OnnxEmbeddingService implements EmbeddingService {
                     tokenizer = HuggingFaceTokenizer.newInstance(vocabPath, options);
                     logger.info("Loaded tokenizer from vocab.txt");
                 } else {
-                    logger.warning("No tokenizer found. Please provide either:");
-                    logger.warning("  - tokenizer.json (recommended for all-MiniLM-L6-v2)");
-                    logger.warning("  - vocab.txt (legacy BERT tokenization)");
+                    logger.warning("No tokenizer found");
                     throw new IllegalStateException("Tokenizer not found");
                 }
 
@@ -183,6 +248,13 @@ public class OnnxEmbeddingService implements EmbeddingService {
 
     @Override
     public void shutdown() {
+        if (downloader != null) {
+            downloader.shutdown();
+        }
+        if (httpClient != null) {
+            httpClient.dispatcher().executorService().shutdown();
+            httpClient.connectionPool().evictAll();
+        }
         if (session != null) {
             try {
                 session.close();

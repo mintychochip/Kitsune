@@ -22,6 +22,21 @@ embedding:
     # Model: nomic-embed-text-v1.5, all-MiniLM-L6-v2
     model: "nomic-embed-text-v1.5"
 
+    # Auto-download model from Hugging Face if missing
+    auto-download: true
+
+    # Custom repository (optional, overrides built-in registry)
+    # Example: "nomic-ai/nomic-embed-text-v1.5"
+    repository: ""
+
+    # Custom paths within repository (optional)
+    model-path: ""
+    tokenizer-path: ""
+
+    # Download retry settings
+    download-retries: 3
+    download-timeout-seconds: 300
+
   # Embedding dimension (nomic: 768, all-MiniLM-L6-v2: 384)
   dimension: 768
 

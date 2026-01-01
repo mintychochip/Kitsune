@@ -73,6 +73,30 @@ public class KitsuneConfig {
         return config.getString("embedding.onnx.model", "nomic-embed-text-v1.5");
     }
 
+    public boolean isOnnxAutoDownloadEnabled() {
+        return config.getBoolean("embedding.onnx.auto-download", true);
+    }
+
+    public String getOnnxRepository() {
+        return config.getString("embedding.onnx.repository", "");
+    }
+
+    public String getOnnxModelPath() {
+        return config.getString("embedding.onnx.model-path", "");
+    }
+
+    public String getOnnxTokenizerPath() {
+        return config.getString("embedding.onnx.tokenizer-path", "");
+    }
+
+    public int getDownloadRetries() {
+        return config.getInt("embedding.onnx.download-retries", 3);
+    }
+
+    public int getDownloadTimeoutSeconds() {
+        return config.getInt("embedding.onnx.download-timeout-seconds", 300);
+    }
+
     // Storage settings
     public String getSqlitePath() {
         return config.getString("storage.sqlite.path", "kitsune.db");
