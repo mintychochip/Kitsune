@@ -3,8 +3,6 @@ package org.aincraft.kitsune.listener;
 import org.aincraft.kitsune.api.ContainerLocations;
 import org.aincraft.kitsune.indexing.BukkitContainerIndexer;
 import org.aincraft.kitsune.util.ContainerLocationResolver;
-import org.aincraft.kitsune.util.LocationConverter;
-import org.bukkit.Location;
 import org.bukkit.block.Container;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -25,25 +23,19 @@ public class HopperTransferListener implements Listener {
         Inventory source = event.getSource();
         Inventory destination = event.getDestination();
 
-        // Handle source container
+        // Handle source container (pass full ContainerLocations for multi-block support)
         if (source.getHolder() instanceof Container) {
             ContainerLocations sourceLocations = locationResolver.resolveLocations(source.getHolder());
             if (sourceLocations != null) {
-                Location sourceLocation = LocationConverter.toBukkitLocation(sourceLocations.primaryLocation());
-                if (sourceLocation != null) {
-                    containerIndexer.scheduleIndex(sourceLocation, source.getContents());
-                }
+                containerIndexer.scheduleIndex(sourceLocations, source.getContents());
             }
         }
 
-        // Handle destination container
+        // Handle destination container (pass full ContainerLocations for multi-block support)
         if (destination.getHolder() instanceof Container) {
             ContainerLocations destLocations = locationResolver.resolveLocations(destination.getHolder());
             if (destLocations != null) {
-                Location destLocation = LocationConverter.toBukkitLocation(destLocations.primaryLocation());
-                if (destLocation != null) {
-                    containerIndexer.scheduleIndex(destLocation, destination.getContents());
-                }
+                containerIndexer.scheduleIndex(destLocations, destination.getContents());
             }
         }
     }
