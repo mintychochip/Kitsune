@@ -1,10 +1,5 @@
 package org.aincraft.kitsune.config;
 
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Set;
-import org.aincraft.kitsune.embedding.download.ModelRegistry;
-import org.aincraft.kitsune.embedding.download.ModelSpec;
 
 /**
  * Platform-agnostic configuration wrapper.
@@ -276,61 +271,6 @@ public class KitsuneConfig {
 
         public int downloadTimeoutSeconds() {
             return config.getInt("embedding.download-timeout-seconds", 300);
-        }
-
-        public Map<String, ModelSpec> knownModels() {
-            Map<String, ModelSpec> models = new HashMap<>();
-            Set<String> modelNames = config.getKeys("embedding.known-models");
-
-            for (String modelName : modelNames) {
-                String basePath = "embedding.known-models." + modelName;
-                String repository = config.getString(basePath + ".repository", "");
-                String modelPath = config.getString(basePath + ".model-path", "onnx/model.onnx");
-                String tokenizerPath = config.getString(basePath + ".tokenizer-path", "tokenizer.json");
-
-                if (!repository.isEmpty()) {
-                    // Dimension is inferred from the model (defaults to 384 for unknown models)
-                    int dimension = inferDimension(modelName);
-                    models.put(modelName, new ModelSpec(modelName, repository, modelPath, tokenizerPath, dimension));
-                }
-            }
-
-            return models;
-        }
-
-        /**
-         * Infers the embedding dimension based on the model name.
-         * This keeps the dimension logic in the model implementation rather than config.
-         */
-        private int inferDimension(String modelName) {
-            return switch (modelName) {
-                case "nomic-embed-text-v1.5" -> 768;
-                case "all-MiniLM-L6-v2" -> 384;
-                case "bge-m3" -> 1024;
-                default -> 384; // Default dimension for unknown models
-            };
-        }
-
-        /**
-         * Creates a ModelRegistry with default and configured models.
-         * Includes built-in defaults plus any models defined in configuration.
-         */
-        public ModelRegistry createRegistry() {
-            Map<String, ModelSpec> models = new HashMap<>();
-
-            // Add default model
-            models.put("nomic-embed-text-v1.5", new ModelSpec(
-                "nomic-embed-text-v1.5",
-                "nomic-ai/nomic-embed-text-v1.5",
-                "onnx/model.onnx",
-                "tokenizer.json",
-                768
-            ));
-
-            // Add configured models, overriding defaults if same name
-            models.putAll(knownModels());
-
-            return new ModelRegistry(models);
         }
     }
 

@@ -5,17 +5,17 @@ import ai.djl.huggingface.tokenizers.HuggingFaceTokenizer;
 import ai.onnxruntime.OnnxTensor;
 import ai.onnxruntime.OrtEnvironment;
 import ai.onnxruntime.OrtSession;
+import java.net.http.HttpClient;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import okhttp3.OkHttpClient;
 import org.aincraft.kitsune.config.KitsuneConfig;
 import org.aincraft.kitsune.embedding.download.*;
 import org.aincraft.kitsune.KitsunePlatform;
@@ -29,21 +29,23 @@ public class OnnxEmbeddingService implements EmbeddingService {
     private HuggingFaceTokenizer tokenizer;
 
     private final String modelName;
-    private final int embeddingDim;
+    private int embeddingDim;
     private static final int MAX_SEQUENCE_LENGTH = 512;
 
     private final KitsuneConfig config;
     private final boolean autoDownloadEnabled;
-    private OkHttpClient httpClient;
+    private HttpClient httpClient;
     private HuggingFaceModelDownloader downloader;
+    private ModelRegistry modelRegistry;
 
     public OnnxEmbeddingService(KitsuneConfig config, Logger logger, KitsunePlatform dataFolderProvider) {
         this.logger = logger;
         this.dataFolderProvider = dataFolderProvider;
         this.config = config;
-        this.modelName = config.getOnnxModel();
-        this.embeddingDim = config.getEmbeddingDimension();
-        this.autoDownloadEnabled = config.isOnnxAutoDownloadEnabled();
+        this.modelName = config.embedding().onnx().model();
+        this.embeddingDim = -1; // Will be set when model is resolved
+        this.autoDownloadEnabled = config.embedding().onnx().autoDownload();
+        this.modelRegistry = createModelRegistry();
     }
 
     @Override
@@ -52,11 +54,47 @@ public class OnnxEmbeddingService implements EmbeddingService {
             .thenCompose(v -> doInitialize());
     }
 
+    private ModelRegistry createModelRegistry() {
+        Map<String, ModelSpec> models = new HashMap<>();
+
+        // Built-in ONNX models with their dimensions
+        models.put("nomic-embed-text-v1.5", new ModelSpec(
+            "nomic-embed-text-v1.5",
+            "nomic-ai/nomic-embed-text-v1.5",
+            "onnx/model.onnx",
+            "tokenizer.json",
+            768
+        ));
+        models.put("all-MiniLM-L6-v2", new ModelSpec(
+            "all-MiniLM-L6-v2",
+            "sentence-transformers/all-MiniLM-L6-v2",
+            "onnx/model.onnx",
+            "tokenizer.json",
+            384
+        ));
+        models.put("bge-m3", new ModelSpec(
+            "bge-m3",
+            "BAAI/bge-m3",
+            "onnx/model.onnx",
+            "tokenizer.json",
+            1024
+        ));
+
+        return new ModelRegistry(models);
+    }
+
     private CompletableFuture<Void> ensureModelAvailable() {
         Path dataFolder = dataFolderProvider.getDataFolder();
         Path modelsDir = dataFolder.resolve("models");
         Path modelPath = modelsDir.resolve(modelName + ".onnx");
         Path tokenizerPath = modelsDir.resolve("tokenizer.json");
+
+        // Always get model spec to set embeddingDim, even if files exist
+        ModelSpec spec = getModelSpec();
+        if (spec == null) {
+            return CompletableFuture.failedFuture(
+                new IllegalStateException("Unknown model: " + modelName + ". Configure repository in config."));
+        }
 
         // If both files exist, skip download
         if (Files.exists(modelPath) && Files.exists(tokenizerPath)) {
@@ -71,13 +109,6 @@ public class OnnxEmbeddingService implements EmbeddingService {
                 new IllegalStateException("ONNX model not found and auto-download is disabled"));
         }
 
-        // Get model spec from registry or config
-        ModelSpec spec = getModelSpec();
-        if (spec == null) {
-            return CompletableFuture.failedFuture(
-                new IllegalStateException("Unknown model: " + modelName + ". Configure repository in config."));
-        }
-
         // Initialize downloader and download
         logger.info("Model files missing, downloading from Hugging Face...");
         initializeDownloader();
@@ -86,25 +117,36 @@ public class OnnxEmbeddingService implements EmbeddingService {
     }
 
     private ModelSpec getModelSpec() {
+        ModelSpec spec = null;
+
         // Check if custom repository is configured
-        String customRepo = config.getOnnxRepository();
+        String customRepo = config.embedding().onnx().repository();
         if (customRepo != null && !customRepo.isEmpty()) {
-            String modelPath = config.getOnnxModelPath();
-            String tokenizerPath = config.getOnnxTokenizerPath();
+            String modelPath = config.embedding().onnx().modelPath();
+            String tokenizerPath = config.embedding().onnx().tokenizerPath();
             if (modelPath.isEmpty()) modelPath = "onnx/model.onnx";
             if (tokenizerPath.isEmpty()) tokenizerPath = "tokenizer.json";
-            return ModelRegistry.fromCustomConfig(modelName, customRepo, modelPath, tokenizerPath, embeddingDim);
+            // Default to 384 for custom models when dimension not configured
+            spec = ModelRegistry.fromCustomConfig(modelName, customRepo, modelPath, tokenizerPath, 384);
+        } else {
+            // Lookup from instance registry
+            spec = modelRegistry.getSpec(modelName).orElse(null);
         }
-        // Lookup from registry
-        return ModelRegistry.getSpec(modelName).orElse(null);
+
+        // Set embedding dimension from the spec
+        if (spec != null) {
+            this.embeddingDim = spec.dimension();
+        }
+
+        return spec;
     }
 
     private void initializeDownloader() {
-        httpClient = new OkHttpClient.Builder()
-            .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(config.getDownloadTimeoutSeconds(), TimeUnit.SECONDS)
+        httpClient = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(30))
+            .followRedirects(HttpClient.Redirect.NORMAL)
             .build();
-        downloader = new HuggingFaceModelDownloader(httpClient, logger, config.getDownloadRetries());
+        downloader = new HuggingFaceModelDownloader(httpClient, logger, config.embedding().onnx().downloadRetries());
     }
 
     private CompletableFuture<Void> doInitialize() {
@@ -281,13 +323,14 @@ public class OnnxEmbeddingService implements EmbeddingService {
     }
 
     @Override
+    public int getDimension() {
+        return embeddingDim;
+    }
+
+    @Override
     public void shutdown() {
         if (downloader != null) {
             downloader.shutdown();
-        }
-        if (httpClient != null) {
-            httpClient.dispatcher().executorService().shutdown();
-            httpClient.connectionPool().evictAll();
         }
         if (session != null) {
             try {
