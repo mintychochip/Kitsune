@@ -1,4 +1,4 @@
 package org.aincraft.kitsune.api;
 
-public interface Location {
+public interface Block {
 }

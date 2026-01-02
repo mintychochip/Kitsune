@@ -28,9 +28,11 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
@@ -39,11 +41,12 @@ import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import org.aincraft.kitsune.World;
 import org.aincraft.kitsune.api.ContainerLocations;
 import org.aincraft.kitsune.api.Location;
+import org.aincraft.kitsune.api.model.ContainerPath;
+import org.aincraft.kitsune.KitsunePlatform;
 import org.aincraft.kitsune.model.ContainerChunk;
-import org.aincraft.kitsune.model.ContainerDocument;
-import org.aincraft.kitsune.model.ContainerPath;
 import org.aincraft.kitsune.model.IndexedChunk;
 import org.aincraft.kitsune.model.StorageStats;
 
@@ -59,6 +62,7 @@ public class JVectorStorage implements VectorStorage {
     private static final float OVERFLOW_FACTOR = 1.2f;
     private static final float ALPHA = 1.2f;
 
+    private final KitsunePlatform platform;
     private final Logger logger;
     private final Path dataDir;
     private final int dimension;
@@ -78,8 +82,9 @@ public class JVectorStorage implements VectorStorage {
 
     private volatile boolean indexDirty = false;
 
-    public JVectorStorage(Logger logger, Path dataDir, int dimension) {
-        this.logger = logger;
+    public JVectorStorage(KitsunePlatform platform, Logger logger, Path dataDir, int dimension) {
+      this.platform = platform;
+      this.logger = logger;
         this.dataDir = dataDir;
         this.dimension = dimension;
     }
@@ -145,6 +150,43 @@ public class JVectorStorage implements VectorStorage {
                 )
             """);
 
+            // Create threshold_config table
+            conn.createStatement().execute("""
+                CREATE TABLE IF NOT EXISTS threshold_config (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    threshold REAL NOT NULL DEFAULT 0.7
+                )
+            """);
+
+            // Initialize threshold_config with default value if not exists
+            try (ResultSet rs = conn.createStatement().executeQuery("SELECT COUNT(*) as count FROM threshold_config")) {
+                if (rs.next() && rs.getLong("count") == 0) {
+                    conn.createStatement().execute("""
+                        INSERT INTO threshold_config (id, threshold) VALUES (1, 0.7)
+                    """);
+                }
+            }
+
+            // Create R-tree spatial index for container locations
+            conn.createStatement().execute("""
+                CREATE VIRTUAL TABLE IF NOT EXISTS container_locations_rtree USING rtree(
+                    id,              -- rowid
+                    min_x, max_x,    -- X bounds
+                    min_y, max_y,    -- Y bounds
+                    min_z, max_z     -- Z bounds
+                )
+            """);
+
+            // Create mapping table to link rtree entries to containers
+            conn.createStatement().execute("""
+                CREATE TABLE IF NOT EXISTS container_rtree_map (
+                    rtree_id INTEGER PRIMARY KEY,
+                    container_id TEXT NOT NULL,
+                    world TEXT NOT NULL,
+                    UNIQUE(container_id, world)
+                )
+            """);
+
             // Create indices
             conn.createStatement().execute(
                 "CREATE INDEX IF NOT EXISTS idx_container_locations_container_id ON container_locations(container_id)"
@@ -154,6 +196,9 @@ public class JVectorStorage implements VectorStorage {
             );
             conn.createStatement().execute(
                 "CREATE INDEX IF NOT EXISTS idx_container_chunks_ordinal ON container_chunks(ordinal)"
+            );
+            conn.createStatement().execute(
+                "CREATE INDEX IF NOT EXISTS idx_container_rtree_map_container ON container_rtree_map(container_id)"
             );
 
             // Check for and perform any necessary migrations
@@ -253,7 +298,7 @@ public class JVectorStorage implements VectorStorage {
         }
     }
 
-    private void loadEmbeddingsLegacy(Connection conn) throws SQLException {
+    private void loadEmbeddingsLegacy(Connection conn) {
         // Load embeddings from old containers table if it has embedding column
         try {
             ResultSet rs = conn.createStatement().executeQuery(
@@ -278,50 +323,6 @@ public class JVectorStorage implements VectorStorage {
             // Old table format doesn't exist or doesn't have embedding column - that's ok
             logger.fine("No legacy embeddings found to migrate");
         }
-    }
-
-    @Override
-    @Deprecated
-    public CompletableFuture<Void> index(ContainerDocument document) {
-        java.util.UUID containerId = generateContainerIdFromLocation(document.location());
-        ContainerChunk chunk = new ContainerChunk(
-            containerId,
-            0,
-            document.contentText(),
-            document.embedding(),
-            document.timestamp()
-        );
-        return indexChunks(containerId, List.of(chunk));
-    }
-
-    /**
-     * Generates a deterministic container ID from a location.
-     * Phase 1 implementation uses UUID v5 (namespace-based) from location coordinates.
-     *
-     * @param location the location to generate ID from
-     * @return a stable UUID for the location
-     */
-    private java.util.UUID generateContainerIdFromLocation(org.aincraft.kitsune.api.Location location) {
-        String locationString = location.worldName() + ":" + location.blockX() + "," +
-                                location.blockY() + "," + location.blockZ();
-        return java.util.UUID.nameUUIDFromBytes(locationString.getBytes());
-    }
-
-    @Override
-    @Deprecated
-    public CompletableFuture<Void> indexChunks(List<ContainerChunk> chunks) {
-        if (chunks.isEmpty()) {
-            return CompletableFuture.completedFuture(null);
-        }
-        // Use the first chunk's containerId
-        return indexChunks(chunks.get(0).containerId(), chunks);
-    }
-
-    @Override
-    @Deprecated
-    public CompletableFuture<Void> indexChunks(List<ContainerChunk> chunks, Location location) {
-        java.util.UUID containerId = generateContainerIdFromLocation(location);
-        return indexChunks(containerId, chunks);
     }
 
     @Override
@@ -447,15 +448,15 @@ public class JVectorStorage implements VectorStorage {
         }
     }
 
-    private String formatContainerPath(org.aincraft.kitsune.model.ContainerPath path) {
-        return path != null ? path.toString() : null;
+    private String formatContainerPath(ContainerPath path) {
+        return path != null ? path.toJson() : null;
     }
 
     @Override
     public CompletableFuture<List<org.aincraft.kitsune.model.SearchResult>> search(
-            float[] embedding, int limit, String world) {
+            float[] embedding, int limit, String worldName) {
         return CompletableFuture.supplyAsync(() -> {
-            logger.info("Search starting: limit=" + limit + ", world=" + world + ", vectorsInIndex=" + vectors.size());
+            logger.info("Search starting: limit=" + limit + ", world=" + worldName + ", vectorsInIndex=" + vectors.size());
 
             // Rebuild index if needed - BEFORE acquiring read lock to avoid deadlock
             if (indexDirty || graphIndex == null) {
@@ -479,8 +480,8 @@ public class JVectorStorage implements VectorStorage {
 
                 VectorFloat<?> queryVector = toVectorFloat(embedding);
 
-                // Track best match per container
-                Map<UUID, org.aincraft.kitsune.model.SearchResult> bestMatches = new HashMap<>();
+                // Collect all matching items (including multiple items from same container)
+                List<org.aincraft.kitsune.model.SearchResult> allMatches = new ArrayList<>();
 
                 try (GraphSearcher searcher = new GraphSearcher(graphIndex)) {
                     ListRandomAccessVectorValues ravv = new ListRandomAccessVectorValues(vectors, dimension);
@@ -488,7 +489,7 @@ public class JVectorStorage implements VectorStorage {
                         queryVector, VectorSimilarityFunction.COSINE, ravv
                     );
 
-                    // Search for more results than needed since we filter by world and dedupe by container
+                    // Search for more results than needed since we filter by world
                     int searchLimit = Math.min(limit * 10, ordinalToUuid.size());
                     SearchResult sr = searcher.search(ssp, searchLimit, Bits.ALL);
 
@@ -524,7 +525,7 @@ public class JVectorStorage implements VectorStorage {
                                         Integer z = rs.getInt("z");
 
                                         // Filter by world if specified
-                                        if (world != null && !world.equals(w)) {
+                                        if (worldName != null && !worldName.equals(w)) {
                                             continue;
                                         }
 
@@ -532,8 +533,9 @@ public class JVectorStorage implements VectorStorage {
                                         if (w == null) {
                                             continue;
                                         }
+                                        World world = platform.getWorld(w);
 
-                                        Location loc = Location.of(w, x, y, z);
+                                        Location loc = KitsunePlatform.get().createLocation(w, x, y, z);
                                         String fullContent = rs.getString("content_text");
                                         String preview = fullContent.length() > 100
                                             ? fullContent.substring(0, 100) + "..."
@@ -552,17 +554,12 @@ public class JVectorStorage implements VectorStorage {
                                         logger.info(String.format("Search result: %.1f%% match at %s - %s",
                                             score * 100, loc, preview));
 
-                                        // Keep best match per container
+                                        // Add result without deduplication
                                         org.aincraft.kitsune.model.SearchResult newResult =
                                             new org.aincraft.kitsune.model.SearchResult(
-                                                loc, score, preview, fullContent
+                                                loc, List.of(loc), score, preview, fullContent, containerPath
                                             );
-                                        org.aincraft.kitsune.model.SearchResult existing =
-                                            bestMatches.get(containerId);
-
-                                        if (existing == null || score > existing.score()) {
-                                            bestMatches.put(containerId, newResult);
-                                        }
+                                        allMatches.add(newResult);
                                     }
                                 }
                             }
@@ -570,15 +567,188 @@ public class JVectorStorage implements VectorStorage {
                     }
                 }
 
-                // Convert to list and sort by score
-                List<org.aincraft.kitsune.model.SearchResult> results = new ArrayList<>(bestMatches.values());
-                results.sort((a, b) -> Double.compare(b.score(), a.score()));
-                List<org.aincraft.kitsune.model.SearchResult> finalResults = results.subList(0, Math.min(limit, results.size()));
-                logger.info("Search complete: " + finalResults.size() + " results returned (from " + bestMatches.size() + " unique containers)");
+                // Sort by score and limit results
+                allMatches.sort((a, b) -> Double.compare(b.score(), a.score()));
+                List<org.aincraft.kitsune.model.SearchResult> finalResults = allMatches.subList(0, Math.min(limit, allMatches.size()));
+                logger.info("Search complete: " + finalResults.size() + " results returned");
                 return finalResults;
 
             } catch (Exception e) {
                 logger.log(Level.WARNING, "Search failed", e);
+                return Collections.emptyList();
+            } finally {
+                indexLock.readLock().unlock();
+            }
+        }, executor);
+    }
+
+    @Override
+    public CompletableFuture<List<org.aincraft.kitsune.model.SearchResult>> searchWithinRadius(
+            float[] embedding, int limit, Location center, int radius) {
+        return CompletableFuture.supplyAsync(() -> {
+            logger.info("Search within radius starting: limit=" + limit + ", center=" + center
+                + ", radius=" + radius + ", vectorsInIndex=" + vectors.size());
+
+            // Rebuild index if needed - BEFORE acquiring read lock to avoid deadlock
+            if (indexDirty || graphIndex == null) {
+                indexLock.writeLock().lock();
+                try {
+                    // Double-check after acquiring lock
+                    if (indexDirty || graphIndex == null) {
+                        rebuildIndex();
+                    }
+                } finally {
+                    indexLock.writeLock().unlock();
+                }
+            }
+
+            indexLock.readLock().lock();
+            try {
+                if (graphIndex == null || vectors.isEmpty()) {
+                    logger.info("Search within radius aborted: graphIndex=" + (graphIndex != null) + ", vectorCount=" + vectors.size());
+                    return Collections.emptyList();
+                }
+
+                // Step (a): SQL pre-filtering to find valid ordinals within bounding box
+                Set<Integer> validOrdinals = new HashSet<>();
+                try (Connection conn = dataSource.getConnection()) {
+                    String boundingBoxSql = """
+                        SELECT DISTINCT cc.ordinal
+                        FROM container_chunks cc
+                        JOIN containers c ON cc.container_id = c.id
+                        LEFT JOIN container_locations cl ON c.id = cl.container_id AND cl.is_primary = 1
+                        WHERE cl.world = ?
+                        AND cl.x BETWEEN ? AND ?
+                        AND cl.y BETWEEN ? AND ?
+                        AND cl.z BETWEEN ? AND ?
+                    """;
+
+                    try (PreparedStatement stmt = conn.prepareStatement(boundingBoxSql)) {
+                        stmt.setString(1, center.getWorld().getName());
+                        stmt.setInt(2, center.blockX() - radius);
+                        stmt.setInt(3, center.blockX() + radius);
+                        stmt.setInt(4, center.blockY() - radius);
+                        stmt.setInt(5, center.blockY() + radius);
+                        stmt.setInt(6, center.blockZ() - radius);
+                        stmt.setInt(7, center.blockZ() + radius);
+
+                        try (ResultSet rs = stmt.executeQuery()) {
+                            while (rs.next()) {
+                                validOrdinals.add(rs.getInt("ordinal"));
+                            }
+                        }
+                    }
+
+                    // Early return if no containers in bounding box
+                    if (validOrdinals.isEmpty()) {
+                        logger.info("Search within radius: no containers found in bounding box");
+                        return Collections.emptyList();
+                    }
+
+                    logger.info("Search within radius: found " + validOrdinals.size() + " ordinals in bounding box");
+
+                    // Step (b): Create custom Bits filter for valid ordinals
+                    Bits radiusBits = validOrdinals::contains;
+
+                    VectorFloat<?> queryVector = toVectorFloat(embedding);
+
+                    // Collect all matching items within radius
+                    List<org.aincraft.kitsune.model.SearchResult> allMatches = new ArrayList<>();
+
+                    try (GraphSearcher searcher = new GraphSearcher(graphIndex)) {
+                        ListRandomAccessVectorValues ravv = new ListRandomAccessVectorValues(vectors, dimension);
+                        DefaultSearchScoreProvider ssp = DefaultSearchScoreProvider.exact(
+                            queryVector, VectorSimilarityFunction.COSINE, ravv
+                        );
+
+                        // Step (c): Use custom Bits filter in search
+                        int searchLimit = Math.min(limit * 10, validOrdinals.size());
+                        SearchResult sr = searcher.search(ssp, searchLimit, radiusBits);
+
+                        for (SearchResult.NodeScore ns : sr.getNodes()) {
+                            int ordinal = ns.node;
+                            // Safety check: skip stale ordinals
+                            if (ordinal >= ordinalToUuid.size() || ordinal >= vectors.size()) {
+                                logger.warning("Skipping stale ordinal " + ordinal);
+                                continue;
+                            }
+
+                            UUID chunkId = ordinalToUuid.get(ordinal);
+                            if (chunkId == null) continue;
+
+                            // Get chunk and container metadata from SQLite
+                            String sql = """
+                                SELECT cc.container_id, cc.content_text, cc.container_path, cl.world, cl.x, cl.y, cl.z
+                                FROM container_chunks cc
+                                JOIN containers c ON cc.container_id = c.id
+                                LEFT JOIN container_locations cl ON c.id = cl.container_id AND cl.is_primary = 1
+                                WHERE cc.id = ?
+                            """;
+
+                            try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                                stmt.setString(1, chunkId.toString());
+                                try (ResultSet rs = stmt.executeQuery()) {
+                                    if (rs.next()) {
+                                        UUID containerId = UUID.fromString(rs.getString("container_id"));
+                                        String w = rs.getString("world");
+                                        Integer x = rs.getInt("x");
+                                        Integer y = rs.getInt("y");
+                                        Integer z = rs.getInt("z");
+
+                                        // Skip if no location found
+                                        if (w == null) {
+                                            continue;
+                                        }
+
+                                        Location loc = KitsunePlatform.get().createLocation(w, x, y, z);
+
+                                        // Step (d): Post-filter by actual Euclidean distance
+                                        double actualDistance = center.distanceTo(loc);
+                                        if (actualDistance > radius) {
+                                            logger.fine("Container at " + loc + " is " + actualDistance
+                                                + " blocks away, outside radius " + radius);
+                                            continue;
+                                        }
+
+                                        String fullContent = rs.getString("content_text");
+                                        String preview = fullContent.length() > 100
+                                            ? fullContent.substring(0, 100) + "..."
+                                            : fullContent;
+
+                                        // Parse container path
+                                        String containerPathJson = rs.getString("container_path");
+                                        ContainerPath containerPath = null;
+                                        if (containerPathJson != null) {
+                                            containerPath = ContainerPath.fromJson(containerPathJson);
+                                        }
+
+                                        // JVector returns similarity score (higher is better)
+                                        double score = ns.score;
+
+                                        logger.info(String.format("Search within radius result: %.1f%% match at %s (%.1f blocks away) - %s",
+                                            score * 100, loc, actualDistance, preview));
+
+                                        // Add result without deduplication
+                                        org.aincraft.kitsune.model.SearchResult newResult =
+                                            new org.aincraft.kitsune.model.SearchResult(
+                                                loc, List.of(loc), score, preview, fullContent, containerPath
+                                            );
+                                        allMatches.add(newResult);
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Sort by score and limit results
+                    allMatches.sort((a, b) -> Double.compare(b.score(), a.score()));
+                    List<org.aincraft.kitsune.model.SearchResult> finalResults = allMatches.subList(0, Math.min(limit, allMatches.size()));
+                    logger.info("Search within radius complete: " + finalResults.size() + " results returned");
+                    return finalResults;
+                }
+
+            } catch (Exception e) {
+                logger.log(Level.WARNING, "Search within radius failed", e);
                 return Collections.emptyList();
             } finally {
                 indexLock.readLock().unlock();
@@ -727,6 +897,60 @@ public class JVectorStorage implements VectorStorage {
         }
     }
 
+    /**
+     * Gets all container IDs within a bounding box using R-tree spatial index.
+     * Much faster than iterating all blocks for large radii.
+     *
+     * @param world World name to filter
+     * @param centerX Center X coordinate
+     * @param centerY Center Y coordinate
+     * @param centerZ Center Z coordinate
+     * @param radius Search radius
+     * @return CompletableFuture with list of container IDs in bounding box
+     */
+    public CompletableFuture<List<UUID>> getContainersInRadius(String world, int centerX, int centerY, int centerZ, int radius) {
+        return CompletableFuture.supplyAsync(() -> {
+            indexLock.readLock().lock();
+            try (Connection conn = dataSource.getConnection()) {
+                // R-tree range query
+                String sql = """
+                    SELECT m.container_id
+                    FROM container_locations_rtree r
+                    JOIN container_rtree_map m ON r.id = m.rtree_id
+                    WHERE m.world = ?
+                    AND r.max_x >= ? AND r.min_x <= ?
+                    AND r.max_y >= ? AND r.min_y <= ?
+                    AND r.max_z >= ? AND r.min_z <= ?
+                """;
+
+                List<UUID> containers = new ArrayList<>();
+                try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+                    stmt.setString(1, world);
+                    stmt.setInt(2, centerX - radius);  // min bound
+                    stmt.setInt(3, centerX + radius);  // max bound
+                    stmt.setInt(4, centerY - radius);
+                    stmt.setInt(5, centerY + radius);
+                    stmt.setInt(6, centerZ - radius);
+                    stmt.setInt(7, centerZ + radius);
+
+                    try (ResultSet rs = stmt.executeQuery()) {
+                        while (rs.next()) {
+                            containers.add(UUID.fromString(rs.getString("container_id")));
+                        }
+                    }
+                }
+
+                logger.info("R-tree query found " + containers.size() + " containers in radius " + radius);
+                return containers;
+            } catch (SQLException e) {
+                logger.log(Level.WARNING, "R-tree query failed", e);
+                return Collections.emptyList();
+            } finally {
+                indexLock.readLock().unlock();
+            }
+        }, executor);
+    }
+
     @Override
     public CompletableFuture<Void> delete(Location location) {
         return CompletableFuture.runAsync(() -> {
@@ -750,7 +974,7 @@ public class JVectorStorage implements VectorStorage {
     private UUID getContainerIdByLocation(Connection conn, Location location) throws SQLException {
         String sql = "SELECT container_id FROM container_locations WHERE world = ? AND x = ? AND y = ? AND z = ?";
         try (PreparedStatement stmt = conn.prepareStatement(sql)) {
-            stmt.setString(1, location.worldName());
+            stmt.setString(1, location.getWorld().getName());
             stmt.setInt(2, location.blockX());
             stmt.setInt(3, location.blockY());
             stmt.setInt(4, location.blockZ());
@@ -884,7 +1108,7 @@ public class JVectorStorage implements VectorStorage {
                 List<UUID> ids = new ArrayList<>();
 
                 try (PreparedStatement stmt = conn.prepareStatement(sql)) {
-                    stmt.setString(1, location.worldName());
+                    stmt.setString(1, location.getWorld().getName());
                     stmt.setInt(2, location.blockX());
                     stmt.setInt(3, location.blockY());
                     stmt.setInt(4, location.blockZ());
@@ -972,7 +1196,12 @@ public class JVectorStorage implements VectorStorage {
         try {
             // Save index before shutdown if dirty
             if (indexDirty) {
-                rebuildIndex();
+                indexLock.writeLock().lock();
+                try {
+                    rebuildIndex();
+                } finally {
+                    indexLock.writeLock().unlock();
+                }
             }
 
             if (readerSupplier != null) {
@@ -995,7 +1224,7 @@ public class JVectorStorage implements VectorStorage {
                 conn.setAutoCommit(false);
                 try {
                     Location primaryLoc = locations.primaryLocation();
-                    String key = primaryLoc.worldName() + ":" + primaryLoc.blockX() + "," + primaryLoc.blockY() + "," + primaryLoc.blockZ();
+                    String key = primaryLoc.getWorld().getName() + ":" + primaryLoc.blockX() + "," + primaryLoc.blockY() + "," + primaryLoc.blockZ();
                     UUID containerId = UUID.nameUUIDFromBytes(key.getBytes());
 
                     // Ensure container exists
@@ -1016,7 +1245,7 @@ public class JVectorStorage implements VectorStorage {
                     try (PreparedStatement stmt = conn.prepareStatement(insertSql)) {
                         for (Location loc : locations.allLocations()) {
                             stmt.setString(1, containerId.toString());
-                            stmt.setString(2, loc.worldName());
+                            stmt.setString(2, loc.getWorld().getName());
                             stmt.setInt(3, loc.blockX());
                             stmt.setInt(4, loc.blockY());
                             stmt.setInt(5, loc.blockZ());
@@ -1024,6 +1253,58 @@ public class JVectorStorage implements VectorStorage {
                             stmt.addBatch();
                         }
                         stmt.executeBatch();
+                    }
+
+                    // Update R-tree spatial index
+                    // First delete existing entry for this container+world
+                    String deleteRtree = "DELETE FROM container_rtree_map WHERE container_id = ?";
+                    try (PreparedStatement stmt = conn.prepareStatement(deleteRtree)) {
+                        stmt.setString(1, containerId.toString());
+                        stmt.executeUpdate();
+                    }
+
+                    // Calculate bounding box for all locations in this container
+                    int minX = Integer.MAX_VALUE, maxX = Integer.MIN_VALUE;
+                    int minY = Integer.MAX_VALUE, maxY = Integer.MIN_VALUE;
+                    int minZ = Integer.MAX_VALUE, maxZ = Integer.MIN_VALUE;
+                    String world = null;
+
+                    for (Location loc : locations.allLocations()) {
+                        world = loc.getWorld().getName();
+                        minX = Math.min(minX, loc.blockX());
+                        maxX = Math.max(maxX, loc.blockX());
+                        minY = Math.min(minY, loc.blockY());
+                        maxY = Math.max(maxY, loc.blockY());
+                        minZ = Math.min(minZ, loc.blockZ());
+                        maxZ = Math.max(maxZ, loc.blockZ());
+                    }
+
+                    if (world != null) {
+                        // Insert into rtree
+                        String insertRtree = "INSERT INTO container_locations_rtree (min_x, max_x, min_y, max_y, min_z, max_z) VALUES (?, ?, ?, ?, ?, ?)";
+                        try (PreparedStatement stmt = conn.prepareStatement(insertRtree, java.sql.Statement.RETURN_GENERATED_KEYS)) {
+                            stmt.setInt(1, minX);
+                            stmt.setInt(2, maxX);
+                            stmt.setInt(3, minY);
+                            stmt.setInt(4, maxY);
+                            stmt.setInt(5, minZ);
+                            stmt.setInt(6, maxZ);
+                            stmt.executeUpdate();
+
+                            try (ResultSet rs = stmt.getGeneratedKeys()) {
+                                if (rs.next()) {
+                                    long rtreeId = rs.getLong(1);
+                                    // Insert mapping
+                                    String insertMap = "INSERT INTO container_rtree_map (rtree_id, container_id, world) VALUES (?, ?, ?)";
+                                    try (PreparedStatement mapStmt = conn.prepareStatement(insertMap)) {
+                                        mapStmt.setLong(1, rtreeId);
+                                        mapStmt.setString(2, containerId.toString());
+                                        mapStmt.setString(3, world);
+                                        mapStmt.executeUpdate();
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     conn.commit();
@@ -1053,13 +1334,13 @@ public class JVectorStorage implements VectorStorage {
                 """;
 
                 try (PreparedStatement stmt = conn.prepareStatement(sql)) {
-                    stmt.setString(1, anyPosition.worldName());
+                    stmt.setString(1, anyPosition.getWorld().getName());
                     stmt.setInt(2, anyPosition.blockX());
                     stmt.setInt(3, anyPosition.blockY());
                     stmt.setInt(4, anyPosition.blockZ());
                     try (ResultSet rs = stmt.executeQuery()) {
                         if (rs.next()) {
-                            Location loc = Location.of(
+                            Location loc = KitsunePlatform.get().createLocation(
                                 rs.getString("world"),
                                 rs.getInt("x"),
                                 rs.getInt("y"),
@@ -1094,13 +1375,13 @@ public class JVectorStorage implements VectorStorage {
 
                 List<Location> locations = new ArrayList<>();
                 try (PreparedStatement stmt = conn.prepareStatement(sql)) {
-                    stmt.setString(1, primaryLocation.worldName());
+                    stmt.setString(1, primaryLocation.getWorld().getName());
                     stmt.setInt(2, primaryLocation.blockX());
                     stmt.setInt(3, primaryLocation.blockY());
                     stmt.setInt(4, primaryLocation.blockZ());
                     try (ResultSet rs = stmt.executeQuery()) {
                         while (rs.next()) {
-                            locations.add(Location.of(
+                            locations.add(KitsunePlatform.get().createLocation(
                                 rs.getString("world"),
                                 rs.getInt("x"),
                                 rs.getInt("y"),
@@ -1124,28 +1405,50 @@ public class JVectorStorage implements VectorStorage {
         return CompletableFuture.runAsync(() -> {
             indexLock.writeLock().lock();
             try (Connection conn = dataSource.getConnection()) {
-                // Find container ID for this primary location
-                String selectSql = "SELECT container_id FROM container_locations WHERE world = ? AND x = ? AND y = ? AND z = ? AND is_primary = 1";
-                UUID containerId = null;
-                try (PreparedStatement stmt = conn.prepareStatement(selectSql)) {
-                    stmt.setString(1, primaryLocation.worldName());
-                    stmt.setInt(2, primaryLocation.blockX());
-                    stmt.setInt(3, primaryLocation.blockY());
-                    stmt.setInt(4, primaryLocation.blockZ());
-                    try (ResultSet rs = stmt.executeQuery()) {
-                        if (rs.next()) {
-                            containerId = UUID.fromString(rs.getString("container_id"));
+                conn.setAutoCommit(false);
+                try {
+                    // Find container ID for this primary location
+                    String selectSql = "SELECT container_id FROM container_locations WHERE world = ? AND x = ? AND y = ? AND z = ? AND is_primary = 1";
+                    UUID containerId = null;
+                    try (PreparedStatement stmt = conn.prepareStatement(selectSql)) {
+                        stmt.setString(1, primaryLocation.getWorld().getName());
+                        stmt.setInt(2, primaryLocation.blockX());
+                        stmt.setInt(3, primaryLocation.blockY());
+                        stmt.setInt(4, primaryLocation.blockZ());
+                        try (ResultSet rs = stmt.executeQuery()) {
+                            if (rs.next()) {
+                                containerId = UUID.fromString(rs.getString("container_id"));
+                            }
                         }
                     }
-                }
 
-                if (containerId != null) {
-                    // Delete all locations for this container
-                    String deleteSql = "DELETE FROM container_locations WHERE container_id = ?";
-                    try (PreparedStatement stmt = conn.prepareStatement(deleteSql)) {
-                        stmt.setString(1, containerId.toString());
-                        stmt.executeUpdate();
+                    if (containerId != null) {
+                        // Delete all locations for this container
+                        String deleteSql = "DELETE FROM container_locations WHERE container_id = ?";
+                        try (PreparedStatement stmt = conn.prepareStatement(deleteSql)) {
+                            stmt.setString(1, containerId.toString());
+                            stmt.executeUpdate();
+                        }
+
+                        // Clean up R-tree entry
+                        String deleteRtreeMap = "DELETE FROM container_rtree_map WHERE container_id = ?";
+                        try (PreparedStatement stmt = conn.prepareStatement(deleteRtreeMap)) {
+                            stmt.setString(1, containerId.toString());
+                            int deleted = stmt.executeUpdate();
+                            if (deleted > 0) {
+                                // Delete orphaned rtree entries
+                                conn.createStatement().execute("""
+                                    DELETE FROM container_locations_rtree
+                                    WHERE id NOT IN (SELECT rtree_id FROM container_rtree_map)
+                                """);
+                            }
+                        }
                     }
+
+                    conn.commit();
+                } catch (SQLException e) {
+                    conn.rollback();
+                    throw e;
                 }
             } catch (SQLException e) {
                 logger.log(Level.WARNING, "Failed to delete container positions", e);
@@ -1217,7 +1520,7 @@ public class JVectorStorage implements VectorStorage {
         try (PreparedStatement stmt = conn.prepareStatement(insertSql)) {
             for (Location loc : locations.allLocations()) {
                 stmt.setString(1, containerId.toString());
-                stmt.setString(2, loc.worldName());
+                stmt.setString(2, loc.getWorld().getName());
                 stmt.setInt(3, loc.blockX());
                 stmt.setInt(4, loc.blockY());
                 stmt.setInt(5, loc.blockZ());
@@ -1246,7 +1549,7 @@ public class JVectorStorage implements VectorStorage {
     private Optional<UUID> getContainerByLocationInternal(Connection conn, Location location) throws SQLException {
         String sql = "SELECT container_id FROM container_locations WHERE world = ? AND x = ? AND y = ? AND z = ?";
         try (PreparedStatement stmt = conn.prepareStatement(sql)) {
-            stmt.setString(1, location.worldName());
+            stmt.setString(1, location.getWorld().getName());
             stmt.setInt(2, location.blockX());
             stmt.setInt(3, location.blockY());
             stmt.setInt(4, location.blockZ());
@@ -1271,7 +1574,7 @@ public class JVectorStorage implements VectorStorage {
                     stmt.setString(1, containerId.toString());
                     try (ResultSet rs = stmt.executeQuery()) {
                         while (rs.next()) {
-                            locations.add(Location.of(
+                            locations.add(KitsunePlatform.get().createLocation(
                                 rs.getString("world"),
                                 rs.getInt("x"),
                                 rs.getInt("y"),
@@ -1301,7 +1604,7 @@ public class JVectorStorage implements VectorStorage {
                     stmt.setString(1, containerId.toString());
                     try (ResultSet rs = stmt.executeQuery()) {
                         if (rs.next()) {
-                            Location loc = Location.of(
+                            Location loc = KitsunePlatform.get().createLocation(
                                 rs.getString("world"),
                                 rs.getInt("x"),
                                 rs.getInt("y"),
@@ -1336,6 +1639,20 @@ public class JVectorStorage implements VectorStorage {
                     try (PreparedStatement stmt = conn.prepareStatement(deleteLoc)) {
                         stmt.setString(1, containerId.toString());
                         stmt.executeUpdate();
+                    }
+
+                    // Clean up R-tree entry
+                    String deleteRtreeMap = "DELETE FROM container_rtree_map WHERE container_id = ?";
+                    try (PreparedStatement stmt = conn.prepareStatement(deleteRtreeMap)) {
+                        stmt.setString(1, containerId.toString());
+                        int deleted = stmt.executeUpdate();
+                        if (deleted > 0) {
+                            // Delete orphaned rtree entries
+                            conn.createStatement().execute("""
+                                DELETE FROM container_locations_rtree
+                                WHERE id NOT IN (SELECT rtree_id FROM container_rtree_map)
+                            """);
+                        }
                     }
 
                     // Delete container itself
@@ -1396,5 +1713,79 @@ public class JVectorStorage implements VectorStorage {
         } catch (IOException e) {
             throw new RuntimeException("Failed to deserialize embedding", e);
         }
+    }
+
+    /**
+     * Get the underlying HikariDataSource for shared database connections.
+     * Used by other components (e.g., SearchHistoryStorage) to access the same SQLite database.
+     *
+     * @return the HikariDataSource
+     */
+    public HikariDataSource getDataSource() {
+        return dataSource;
+    }
+
+    public CompletableFuture<Double> getThreshold() {
+        return CompletableFuture.supplyAsync(() -> {
+            indexLock.readLock().lock();
+            try (Connection conn = dataSource.getConnection()) {
+                String sql = "SELECT threshold FROM threshold_config WHERE id = 1";
+                try (ResultSet rs = conn.createStatement().executeQuery(sql)) {
+                    if (rs.next()) {
+                        return rs.getDouble("threshold");
+                    }
+                }
+                // Return default threshold if not found
+                return 0.81;
+            } catch (SQLException e) {
+                logger.log(Level.WARNING, "Failed to get threshold", e);
+                return 0.81;
+            } finally {
+                indexLock.readLock().unlock();
+            }
+        }, executor);
+    }
+
+    public CompletableFuture<Void> setThreshold(double threshold) {
+        return CompletableFuture.runAsync(() -> {
+            indexLock.writeLock().lock();
+            try (Connection conn = dataSource.getConnection()) {
+                conn.setAutoCommit(false);
+                try {
+                    // Check if row exists
+                    String checkSql = "SELECT id FROM threshold_config WHERE id = 1";
+                    boolean exists = false;
+                    try (ResultSet rs = conn.createStatement().executeQuery(checkSql)) {
+                        exists = rs.next();
+                    }
+
+                    if (exists) {
+                        // Update existing row
+                        String updateSql = "UPDATE threshold_config SET threshold = ? WHERE id = 1";
+                        try (PreparedStatement stmt = conn.prepareStatement(updateSql)) {
+                            stmt.setDouble(1, threshold);
+                            stmt.executeUpdate();
+                        }
+                    } else {
+                        // Insert new row
+                        String insertSql = "INSERT INTO threshold_config (id, threshold) VALUES (1, ?)";
+                        try (PreparedStatement stmt = conn.prepareStatement(insertSql)) {
+                            stmt.setDouble(1, threshold);
+                            stmt.executeUpdate();
+                        }
+                    }
+
+                    conn.commit();
+                } catch (SQLException e) {
+                    conn.rollback();
+                    throw e;
+                }
+            } catch (SQLException e) {
+                logger.log(Level.WARNING, "Failed to set threshold", e);
+                throw new RuntimeException("Threshold update failed", e);
+            } finally {
+                indexLock.writeLock().unlock();
+            }
+        }, executor);
     }
 }
