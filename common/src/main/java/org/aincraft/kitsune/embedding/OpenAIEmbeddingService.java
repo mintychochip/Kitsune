@@ -13,16 +13,16 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.logging.Level;
 import org.aincraft.kitsune.Platform;
-import org.aincraft.kitsune.config.KitsuneConfig;
+import org.aincraft.kitsune.config.KitsuneConfigInterface;
 
 public final class OpenAIEmbeddingService implements EmbeddingService {
     private final Platform platform;
-    private final KitsuneConfig config;
+    private final KitsuneConfigInterface config;
     private final HttpClient httpClient;
     private final Gson gson = new Gson();
     private static final String OPENAI_API_URL = "https://api.openai.com/v1/embeddings";
 
-    public OpenAIEmbeddingService(Platform platform, KitsuneConfig config) {
+    public OpenAIEmbeddingService(Platform platform, KitsuneConfigInterface config) {
         this.platform = platform;
         this.config = config;
         this.httpClient = HttpClient.newHttpClient();
@@ -31,11 +31,11 @@ public final class OpenAIEmbeddingService implements EmbeddingService {
     @Override
     public CompletableFuture<Void> initialize() {
         return CompletableFuture.runAsync(() -> {
-            String apiKey = config.embedding().apiKey();
+            String apiKey = config.embeddingApiKey();
             if (apiKey == null || apiKey.isEmpty()) {
                 throw new IllegalStateException("OpenAI API key not configured");
             }
-            platform.getLogger().info("OpenAI embedding service initialized with model: " + config.embedding().model());
+            platform.getLogger().info("OpenAI embedding service initialized with model: " + config.embeddingModel());
         });
     }
 
@@ -48,11 +48,11 @@ public final class OpenAIEmbeddingService implements EmbeddingService {
     public CompletableFuture<float[]> embed(String text, String taskType) {
         return CompletableFuture.supplyAsync(() -> {
             try {
-                String apiKey = config.embedding().apiKey();
+                String apiKey = config.embeddingApiKey();
 
                 JsonObject body = new JsonObject();
                 body.addProperty("input", text);
-                body.addProperty("model", config.embedding().model());
+                body.addProperty("model", config.embeddingModel());
 
                 String jsonBody = gson.toJson(body);
 
@@ -100,7 +100,7 @@ public final class OpenAIEmbeddingService implements EmbeddingService {
 
         return CompletableFuture.supplyAsync(() -> {
             try {
-                String apiKey = config.embedding().apiKey();
+                String apiKey = config.embeddingApiKey();
                 int batchSize = texts.size();
                 platform.getLogger().info("Starting batch embedding for " + batchSize + " texts with OpenAI");
 
@@ -111,7 +111,7 @@ public final class OpenAIEmbeddingService implements EmbeddingService {
                     inputArray.add(text);
                 }
                 body.add("input", inputArray);
-                body.addProperty("model", config.embedding().model());
+                body.addProperty("model", config.embeddingModel());
 
                 String jsonBody = gson.toJson(body);
 
@@ -159,7 +159,7 @@ public final class OpenAIEmbeddingService implements EmbeddingService {
 
     @Override
     public int getDimension() {
-        String model = config.embedding().model();
+        String model = config.embeddingModel();
         return switch (model) {
             case "text-embedding-3-large" -> 3072;
             case "text-embedding-3-small" -> 1536;

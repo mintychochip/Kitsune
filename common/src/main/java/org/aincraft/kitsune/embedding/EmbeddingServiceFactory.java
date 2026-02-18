@@ -4,7 +4,7 @@ import javax.sql.DataSource;
 import org.aincraft.kitsune.Platform;
 import org.aincraft.kitsune.cache.EmbeddingCache;
 import org.aincraft.kitsune.cache.LayeredEmbeddingCache;
-import org.aincraft.kitsune.config.KitsuneConfig;
+import org.aincraft.kitsune.config.KitsuneConfigInterface;
 import org.aincraft.kitsune.embedding.download.ModelMap;
 import org.aincraft.kitsune.embedding.download.ModelSpec;
 
@@ -14,13 +14,13 @@ import org.aincraft.kitsune.embedding.download.ModelSpec;
 public final class EmbeddingServiceFactory {
     private EmbeddingServiceFactory() {}
 
-    public static EmbeddingService create(KitsuneConfig config, Platform platform, DataSource dataSource) {
-        String provider = config.embedding().provider();
-        String model = config.embedding().model();
+    public static EmbeddingService create(KitsuneConfigInterface config, Platform platform, DataSource dataSource) {
+        String provider = config.embeddingProvider();
+        String model = config.embeddingModel();
 
         EmbeddingService baseService = switch (provider.toLowerCase()) {
             case "openai" -> {
-                String apiKey = config.embedding().apiKey();
+                String apiKey = config.embeddingApiKey();
                 if (apiKey == null || apiKey.isEmpty()) {
                     platform.getLogger().warning("OpenAI API key not configured, falling back to local model");
                     yield createLocalService(model, platform);
@@ -28,7 +28,7 @@ public final class EmbeddingServiceFactory {
                 yield new OpenAIEmbeddingService(platform, config);
             }
             case "google" -> {
-                String apiKey = config.embedding().apiKey();
+                String apiKey = config.embeddingApiKey();
                 if (apiKey == null || apiKey.isEmpty()) {
                     platform.getLogger().warning("Google API key not configured, falling back to local model");
                     yield createLocalService(model, platform);

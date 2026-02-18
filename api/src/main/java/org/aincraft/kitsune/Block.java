@@ -1,14 +1,16 @@
 package org.aincraft.kitsune;
 
 import java.util.Optional;
+import org.jetbrains.annotations.Nullable;
 
 public interface Block {
 
-  String getType();
+  String type();
 
-  String getWorld();
+  String world();
 
-  Optional<Inventory> getInventory();
+  @Nullable
+  Inventory inventory();
 
   boolean isAir();
 }

@@ -170,7 +170,7 @@ public final class SearchResultTreeBuilder {
     Location loc = firstResult.location();
 
     // Get block type from location
-    String containerType = loc.getBlock() != null ? loc.getBlock().getType() : null;
+    String containerType = loc.getBlock() != null ? loc.getBlock().type() : null;
 
     SearchResultTreeNode locationNode = SearchResultTreeNode.locationNode(loc, containerType);
 
@@ -227,10 +227,9 @@ public final class SearchResultTreeBuilder {
 
         Block block = loc.getBlock();
         if (!block.isAir()) {
-          Optional<Inventory> inventory = block.getInventory();
-          if (inventory.isPresent()) {
-            Inventory platformInventory = inventory.get();
-            item = platformInventory.getItem(slotIndex);
+          Inventory inventory = block.inventory();
+          if (inventory != null) {
+            item = inventory.getItem(slotIndex);
           }
         }
 

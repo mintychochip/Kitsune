@@ -17,11 +17,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.logging.Level;
 import org.aincraft.kitsune.Platform;
-import org.aincraft.kitsune.embedding.download.ConsoleProgressReporter;
-import org.aincraft.kitsune.embedding.download.DownloadProgressListener;
 import org.aincraft.kitsune.embedding.download.HuggingFaceModelDownloader;
 import org.aincraft.kitsune.embedding.download.ModelSpec;
-import org.aincraft.kitsune.embedding.download.ModelSpec.TaskPrefixStrategy;
 
 /**
  * Unified ONNX embedding service that supports multiple models via ModelSpec.

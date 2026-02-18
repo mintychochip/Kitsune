@@ -10,6 +10,7 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.ExecutorService;
 import java.util.logging.Level;
 import org.aincraft.kitsune.Platform;
+import org.aincraft.kitsune.embedding.DownloadProgressListener;
 
 /**
  * Downloads ONNX models and tokenizers from Hugging Face using JDK HttpClient.

@@ -4,7 +4,7 @@ import org.aincraft.kitsune.api.ContainerLocations;
 import org.aincraft.kitsune.Location;
 import org.aincraft.kitsune.api.indexing.SerializedItem;
 import org.aincraft.kitsune.api.model.ContainerPath;
-import org.aincraft.kitsune.config.KitsuneConfig;
+import org.aincraft.kitsune.config.KitsuneConfigInterface;
 import org.aincraft.kitsune.embedding.EmbeddingService;
 import org.aincraft.kitsune.model.ContainerChunk;
 import org.aincraft.kitsune.storage.KitsuneStorage;
@@ -34,18 +34,18 @@ public class ContainerIndexer {
     private final Logger logger;
     private final EmbeddingService embeddingService;
     final KitsuneStorage storage;
-    private final KitsuneConfig config;
+    private final KitsuneConfigInterface config;
     private final ScheduledExecutorService executor = Executors.newScheduledThreadPool(2);
     private final Map<Location, ScheduledFuture<?>> pendingIndexes = new HashMap<>();
     private final int debounceDelayMs;
 
     public ContainerIndexer(Logger logger, EmbeddingService embeddingService,
-                          KitsuneStorage storage, KitsuneConfig config) {
+                          KitsuneStorage storage, KitsuneConfigInterface config) {
         this.logger = logger;
         this.embeddingService = embeddingService;
         this.storage = storage;
         this.config = config;
-        this.debounceDelayMs = config.indexing().debounceDelayMs();
+        this.debounceDelayMs = config.indexingDebounceDelayMs();
     }
 
     /**

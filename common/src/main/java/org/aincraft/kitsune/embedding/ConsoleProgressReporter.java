@@ -1,19 +1,20 @@
-package org.aincraft.kitsune.embedding.download;
+package org.aincraft.kitsune.embedding;
 
 import java.time.Duration;
 import java.time.Instant;
 import java.util.logging.Logger;
+import org.apache.commons.io.FileUtils;
 
 /**
  * Reports download progress to the console logger.
  * Throttles output to avoid spam (max every 2 seconds per file).
  */
-public final class ConsoleProgressReporter implements DownloadProgressListener {
+final class ConsoleProgressReporter implements DownloadProgressListener {
     private final Logger logger;
     private Instant lastReportTime = Instant.EPOCH;
     private static final Duration REPORT_INTERVAL = Duration.ofSeconds(2);
 
-    public ConsoleProgressReporter(Logger logger) {
+    ConsoleProgressReporter(Logger logger) {
         this.logger = logger;
     }
 
@@ -44,9 +45,6 @@ public final class ConsoleProgressReporter implements DownloadProgressListener {
     }
 
     private static String formatBytes(long bytes) {
-        if (bytes < 1024) return bytes + " B";
-        if (bytes < 1024 * 1024) return String.format("%.1f KB", bytes / 1024.0);
-        if (bytes < 1024 * 1024 * 1024) return String.format("%.1f MB", bytes / (1024.0 * 1024));
-        return String.format("%.2f GB", bytes / (1024.0 * 1024 * 1024));
+        return FileUtils.byteCountToDisplaySize(bytes);
     }
 }

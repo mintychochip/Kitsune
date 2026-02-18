@@ -2,6 +2,7 @@ package org.aincraft.kitsune;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.event.HoverEvent;
 
@@ -33,7 +34,7 @@ public interface Item {
    * @return The underlying platform item cast to the expected type
    * @throws ClassCastException if the item is not an instance of the expected type
    */
-  <T> T unwrap(Class<T> expectedType);
+  <T> T unwrap(Class<T> expectedType) throws IllegalArgumentException;
 
   /**
    * Check if this item is unbreakable.
@@ -163,4 +164,6 @@ public interface Item {
    * @return MiniMessage serialized custom name, or null if none
    */
   String getCustomNameSerialized();
+
+  Optional<Inventory> getInventory();
 }
