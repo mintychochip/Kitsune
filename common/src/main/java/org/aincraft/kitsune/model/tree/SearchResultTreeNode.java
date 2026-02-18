@@ -5,7 +5,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import org.aincraft.kitsune.Location;
-import org.aincraft.kitsune.api.model.NestedContainerRef;
+import org.aincraft.kitsune.api.model.ContainerNode;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -49,7 +49,7 @@ public final class SearchResultTreeNode {
 
     // CONTAINER-specific fields
     @Nullable
-    private final NestedContainerRef containerRef;
+    private final ContainerNode containerRef;
     @Nullable
     private final Integer containerScorePercent;  // Score if container itself is a search result
 
@@ -66,7 +66,7 @@ public final class SearchResultTreeNode {
             String displayName,
             @Nullable Location location,
             @Nullable String containerType,
-            @Nullable NestedContainerRef containerRef,
+            @Nullable ContainerNode containerRef,
             @Nullable Integer containerScorePercent,
             @Nullable ItemResultData itemData) {
         this.type = Preconditions.checkNotNull(type, "Node type cannot be null");
@@ -144,16 +144,60 @@ public final class SearchResultTreeNode {
     }
 
     /**
+     * Formats a container node display string.
+     * Creates a string like "Red Shulker Box (slot 5)".
+     *
+     * @param node the container node to format
+     * @return formatted display string
+     */
+    private static String formatContainerDisplay(ContainerNode node) {
+        StringBuilder sb = new StringBuilder();
+
+        // Add color if present
+        String color = node.getColor();
+        if (color != null && !color.isEmpty()) {
+            sb.append(capitalize(color)).append(" ");
+        }
+
+        // Add container type or custom name
+        String customName = node.getCustomName();
+        if (customName != null && !customName.isEmpty()) {
+            sb.append(customName);
+        } else {
+            sb.append(formatContainerType(node.getContainerType()));
+        }
+
+        // Add slot info
+        sb.append(" (slot ").append(node.getSlotIndex()).append(")");
+
+        return sb.toString();
+    }
+
+    private static String capitalize(String s) {
+        if (s == null || s.isEmpty()) return s;
+        return Character.toUpperCase(s.charAt(0)) + s.substring(1).toLowerCase();
+    }
+
+    private static String formatContainerType(String type) {
+        if (type == null) return "Container";
+        return switch (type.toLowerCase()) {
+            case "shulker_box", "shulker" -> "Shulker Box";
+            case "bundle" -> "Bundle";
+            default -> capitalize(type.replace("_", " "));
+        };
+    }
+
+    /**
      * Factory method to create a CONTAINER node for nested containers.
      *
-     * @param ref the nested container reference
+     * @param ref the container node
      * @return a new CONTAINER node with display name from the reference
      */
-    public static SearchResultTreeNode containerNode(NestedContainerRef ref) {
-        Preconditions.checkNotNull(ref, "NestedContainerRef cannot be null");
+    public static SearchResultTreeNode containerNode(ContainerNode ref) {
+        Preconditions.checkNotNull(ref, "ContainerNode cannot be null");
         return new SearchResultTreeNode(
                 NodeType.CONTAINER,
-                ref.toDisplayString(),
+                formatContainerDisplay(ref),
                 null,
                 null,
                 ref,
@@ -165,15 +209,15 @@ public final class SearchResultTreeNode {
      * Factory method to create a CONTAINER node with a similarity score.
      * Used when the container itself is a search result.
      *
-     * @param ref the nested container reference
+     * @param ref the container node
      * @param scorePercent the similarity score percentage
      * @return a new CONTAINER node with score
      */
-    public static SearchResultTreeNode containerNodeWithScore(NestedContainerRef ref, int scorePercent) {
-        Preconditions.checkNotNull(ref, "NestedContainerRef cannot be null");
+    public static SearchResultTreeNode containerNodeWithScore(ContainerNode ref, int scorePercent) {
+        Preconditions.checkNotNull(ref, "ContainerNode cannot be null");
         return new SearchResultTreeNode(
                 NodeType.CONTAINER,
-                ref.toDisplayString(),
+                formatContainerDisplay(ref),
                 null,
                 null,
                 ref,
@@ -281,12 +325,12 @@ public final class SearchResultTreeNode {
     }
 
     /**
-     * Gets the nested container reference if this is a CONTAINER node.
+     * Gets the container node if this is a CONTAINER node.
      *
-     * @return the NestedContainerRef, or null if this is not a CONTAINER node
+     * @return the ContainerNode, or null if this is not a CONTAINER node
      */
     @Nullable
-    public NestedContainerRef getContainerRef() {
+    public ContainerNode getContainerRef() {
         return containerRef;
     }
 

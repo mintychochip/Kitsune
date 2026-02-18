@@ -8,10 +8,11 @@ version = rootProject.version
 
 repositories {
     maven("https://repo.codemc.io/repository/maven-public/")
-    // maven("https://repo.oraxen.com/releases")
+    maven {
+        url = uri("https://repo.papermc.io/repository/maven-public/")
+    }
 }
 dependencies {
-    // compileOnly("io.th0rgal:oraxen:1.203.1")  // Version not found - commented out
     compileOnly("org.popcraft:bolt-bukkit:1.1.52")
     implementation(project(":api"))
     implementation(project(":common"))

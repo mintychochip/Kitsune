@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -112,8 +113,13 @@ public final class LayeredEmbeddingCache implements EmbeddingCache {
     @Override
     public CompletableFuture<Optional<float[]>> get(long key) {
         float[] cached = l1Cache.getIfPresent(key);
-        if (cached != null) {
+        if (cached != null && cached.length > 0) {
             return CompletableFuture.completedFuture(Optional.of(cached));
+        }
+        // If cached is null or empty, treat as miss
+        if (cached != null) {
+            logger.warning("L1 cache returned empty embedding for key " + key + ", treating as miss");
+            l1Cache.invalidate(key);
         }
         return CompletableFuture.supplyAsync(() -> getFromL2(key), executor);
     }

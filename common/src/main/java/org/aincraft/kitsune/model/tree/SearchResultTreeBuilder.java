@@ -16,8 +16,8 @@ import org.aincraft.kitsune.Inventory;
 import org.aincraft.kitsune.Location;
 import org.aincraft.kitsune.api.indexing.ItemLoader;
 import org.aincraft.kitsune.api.model.ContainerPath;
+import org.aincraft.kitsune.api.model.ContainerNode;
 import org.aincraft.kitsune.Item;
-import org.aincraft.kitsune.api.model.NestedContainerRef;
 import org.aincraft.kitsune.cache.ItemDataCache;
 import org.aincraft.kitsune.model.SearchResult;
 import org.aincraft.kitsune.util.ItemDataExtractor;
@@ -189,7 +189,7 @@ public final class SearchResultTreeBuilder {
               .anyMatch(r -> r.containerPath() != null &&
                   !r.containerPath().isRoot() &&
                   !r.containerPath().containerRefs().isEmpty() &&
-                  r.containerPath().containerRefs().get(0).slotIndex() == extractSlotIndex(result, itemCache));
+                  r.containerPath().containerRefs().get(0).getSlotIndex() == extractSlotIndex(result, itemCache));
 
           if (hasChildResults) {
             // Store container's score, don't add as item
@@ -252,9 +252,9 @@ public final class SearchResultTreeBuilder {
         SearchResultTreeNode parentNode = locationNode;
 
         // Build nodes for each container in the path
-        List<NestedContainerRef> containerRefs = containerPath.containerRefs();
+        List<ContainerNode> containerRefs = containerPath.containerRefs();
         for (int i = 0; i < containerRefs.size(); i++) {
-          NestedContainerRef ref = containerRefs.get(i);
+          ContainerNode ref = containerRefs.get(i);
 
           // Build cache key for path up to this point
           String cacheKey = buildCacheKey(containerRefs, i);
@@ -264,7 +264,7 @@ public final class SearchResultTreeBuilder {
 
           if (containerNode == null) {
             // Check if this container has a score (is also a search result)
-            Integer score = (i == 0) ? containerScores.get(ref.slotIndex()) : null;
+            Integer score = (i == 0) ? containerScores.get(ref.getSlotIndex()) : null;
 
             // Create new container node (with or without score)
             if (score != null) {
@@ -485,15 +485,47 @@ public final class SearchResultTreeBuilder {
    * @param upToIndex     index of last ref to include (inclusive)
    * @return cache key string
    */
-  private static String buildCacheKey(List<NestedContainerRef> containerRefs, int upToIndex) {
+  private static String buildCacheKey(List<ContainerNode> containerRefs, int upToIndex) {
     StringBuilder sb = new StringBuilder();
     for (int i = 0; i <= upToIndex; i++) {
       if (i > 0) {
         sb.append(",");
       }
-      NestedContainerRef ref = containerRefs.get(i);
-      sb.append(ref.containerType()).append("|").append(ref.slotIndex());
+      ContainerNode ref = containerRefs.get(i);
+      sb.append(ref.getContainerType()).append("|").append(ref.getSlotIndex());
     }
     return sb.toString();
+  }
+
+  /**
+   * Parses legacy container path string format.
+   * Splits by " → " and creates ContainerNode objects.
+   */
+  private static ContainerPath parseLegacyContainerPath(String pathString) {
+    String[] parts = pathString.split(" → ");
+    List<ContainerNode> refs = new ArrayList<>();
+
+    for (int i = 0; i < parts.length; i++) {
+      String part = parts[i].trim();
+      String containerType = "container";
+      String color = null;
+      String customName = null;
+
+      if (part.toLowerCase().contains("shulker_box") || part.toLowerCase().contains("shulker box")) {
+        containerType = "shulker_box";
+        String lowerPart = part.toLowerCase();
+        int shulkerIdx = lowerPart.indexOf("shulker");
+        if (shulkerIdx > 0) {
+          color = part.substring(0, shulkerIdx).trim().toLowerCase();
+        }
+      } else if (part.toLowerCase().contains("bundle")) {
+        containerType = "bundle";
+      } else {
+        customName = part;
+      }
+
+      refs.add(new ContainerNode(containerType, color, customName, i, null, null));
+    }
+    return new ContainerPath(refs);
   }
 }

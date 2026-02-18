@@ -40,16 +40,26 @@ public final class CachedEmbeddingService implements EmbeddingService {
         return cache.get(key)
                 .thenCompose(cachedEmbedding -> {
                     if (cachedEmbedding.isPresent()) {
-                        platform.getLogger().info("Embedding cache hit for: " + truncate(text, 50) + "...");
-                        return CompletableFuture.completedFuture(cachedEmbedding.get());
+                        float[] embedding = cachedEmbedding.get();
+                        // Validate the cached embedding
+                        if (embedding != null && embedding.length > 0) {
+                            platform.getLogger().info("Embedding cache hit for: " + truncate(text, 50) + "...");
+                            return CompletableFuture.completedFuture(embedding);
+                        } else {
+                            platform.getLogger().warning("Cached embedding was null or empty for: " + truncate(text, 50) + ", regenerating...");
+                        }
                     }
 
                     platform.getLogger().info("Generating new embedding for: " + truncate(text, 50) + "...");
                     return delegate.embed(text, taskType)
-                            .thenCompose(embedding ->
-                                    cache.put(key, embedding)
-                                            .thenApply(v -> embedding)
-                            );
+                            .thenCompose(embedding -> {
+                                if (embedding == null || embedding.length == 0) {
+                                    platform.getLogger().warning("Delegate returned null/empty embedding for: " + truncate(text, 50));
+                                    return CompletableFuture.completedFuture(embedding);
+                                }
+                                return cache.put(key, embedding)
+                                        .thenApply(v -> embedding);
+                            });
                 });
     }
 

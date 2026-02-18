@@ -207,6 +207,10 @@ public final class KitsuneConfig {
         private static final String DISPLAY_RADIUS = "visualizer.display-radius";
         private static final String DISPLAY_DURATION = "visualizer.display-duration-ticks";
         private static final String ITEM_DISPLAY_ENABLED = "visualizer.item-display-enabled";
+        private static final String ORBIT_ENABLED = "visualizer.orbit-enabled";
+        private static final String ORBIT_SPEED = "visualizer.orbit-speed";
+        private static final String SPIN_ENABLED = "visualizer.spin-enabled";
+        private static final String SPIN_SPEED = "visualizer.spin-speed";
 
         private final Configuration config;
 
@@ -217,5 +221,9 @@ public final class KitsuneConfig {
         public double displayRadius() { return config.getDouble(DISPLAY_RADIUS, 1.0); }
         public int displayDurationTicks() { return config.getInt(DISPLAY_DURATION, 200); }
         public boolean itemDisplayEnabled() { return config.getBoolean(ITEM_DISPLAY_ENABLED, true); }
+        public boolean orbitEnabled() { return config.getBoolean(ORBIT_ENABLED, true); }
+        public double orbitSpeed() { return config.getDouble(ORBIT_SPEED, 2.0); }
+        public boolean spinEnabled() { return config.getBoolean(SPIN_ENABLED, true); }
+        public double spinSpeed() { return config.getDouble(SPIN_SPEED, 3.0); }
     }
 }

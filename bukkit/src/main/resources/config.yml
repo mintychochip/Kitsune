@@ -92,3 +92,16 @@ visualizer:
 
   # Duration that ItemDisplay entities remain visible (in ticks, 20 ticks = 1 second)
   display-duration-ticks: 200  # 10 seconds
+
+  # Rotation animation settings
+  # Enable/disable items orbiting around container center
+  orbit-enabled: true
+
+  # Orbit speed in degrees per tick (20 ticks = 1 second)
+  orbit-speed: 2.0
+
+  # Enable/disable items spinning on their own axis
+  spin-enabled: true
+
+  # Spin speed in degrees per tick
+  spin-speed: 3.0

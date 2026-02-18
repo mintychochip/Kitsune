@@ -2,12 +2,11 @@ package org.aincraft.kitsune.serialization;
 
 import org.aincraft.kitsune.Item;
 import org.aincraft.kitsune.api.serialization.TagProvider;
+import org.aincraft.kitsune.api.serialization.Tags;
 import org.bukkit.NamespacedKey;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataType;
-
-import java.util.Collection;
 
 /**
  * Tag provider for Oraxen custom items.
@@ -23,7 +22,7 @@ public class OraxenTagProvider implements TagProvider {
     private static final NamespacedKey ORAXEN_ID = new NamespacedKey("oraxen", "id");
 
     @Override
-    public void appendTags(Collection<String> tags, Item item) {
+    public void appendTags(Tags tags, Item item) {
         ItemStack stack = item.unwrap(ItemStack.class);
         if (stack == null) return;
 
@@ -36,8 +35,6 @@ public class OraxenTagProvider implements TagProvider {
         if (oraxenId == null) return;  // Not an Oraxen item, early exit (self-selection)
 
         // Add Oraxen-specific tags
-        tags.add("oraxen");
-        tags.add("custom");
-        tags.add("oraxen:" + oraxenId.toLowerCase());
+        tags.push("oraxen", "custom", "oraxen:" + oraxenId.toLowerCase());
     }
 }

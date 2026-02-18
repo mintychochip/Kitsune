@@ -7,7 +7,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.logging.Logger;
 import org.aincraft.kitsune.api.model.ContainerPath;
-import org.aincraft.kitsune.api.model.NestedContainerRef;
+import org.aincraft.kitsune.api.model.ContainerNode;
 
 /**
  * Cache for extracted item data from JSON fullContent.
@@ -150,7 +150,7 @@ public class ItemDataCache {
 
     private ContainerPath parseLegacyContainerPath(String pathString) {
         String[] parts = pathString.split(" → ");
-        java.util.List<NestedContainerRef> refs = new java.util.ArrayList<>();
+        java.util.List<ContainerNode> refs = new java.util.ArrayList<>();
 
         for (int i = 0; i < parts.length; i++) {
             String part = parts[i].trim();
@@ -172,7 +172,7 @@ public class ItemDataCache {
                 customName = part;
             }
 
-            refs.add(new NestedContainerRef(containerType, color, customName, i));
+            refs.add(new ContainerNode(containerType, color, customName, i, null, null));
         }
         return new ContainerPath(refs);
     }

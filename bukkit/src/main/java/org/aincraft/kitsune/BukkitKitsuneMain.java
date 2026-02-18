@@ -13,7 +13,7 @@ import net.kyori.adventure.text.event.HoverEvent;
 import net.kyori.adventure.text.event.ClickEvent;
 import org.aincraft.kitsune.api.KitsuneService;
 import org.aincraft.kitsune.api.model.ContainerPath;
-import org.aincraft.kitsune.api.model.NestedContainerRef;
+import org.aincraft.kitsune.api.model.ContainerNode;
 import org.aincraft.kitsune.api.serialization.TagProviderRegistry;
 import org.aincraft.kitsune.model.SearchHistoryEntry;
 import org.aincraft.kitsune.config.BukkitConfigurationFactory;
@@ -91,30 +91,21 @@ public final class BukkitKitsuneMain extends JavaPlugin {
         var configFactory = new BukkitConfigurationFactory(getConfig());
         this.kitsuneConfig = new KitsuneConfig(configFactory);
 
-        // Create tag provider registry
-        this.tagProviderRegistry = TagProviderRegistry.createRegistry();
-
+        this.tagProviderRegistry = TagProviderRegistry.INSTANCE;
         // Create platform plugin with tag provider registry
         this.platformPlugin = new BukkitPlatform(this, configFactory, tagProviderRegistry);
         Platform.set(platformPlugin);
 
         // Register platform-specific providers
-        tagProviderRegistry.register(new BukkitDataComponentTagProvider());
+        TagProviderRegistry.INSTANCE.register(new BukkitDataComponentTagProvider());
 
-        // Conditionally register Oraxen support
-        // if (getServer().getPluginManager().getPlugin("Oraxen") != null) {
-        //     tagProviderRegistry.register(new OraxenTagProvider());
-        //     getLogger().info("Oraxen detected - custom item tags enabled");
-        // }
-
-        // Register generic providers after platform initialization
         TagProviders.registerDefaults(tagProviderRegistry);
 
         // Create serializer
         this.itemSerializer = new BukkitItemSerializer(tagProviderRegistry);
 
         // Register with service locator for external plugins
-        KitsuneService.register(tagProviderRegistry, itemSerializer);
+        KitsuneService.register(tagProviderRegistry);
 
         getLogger().info("Initializing Kitsune...");
 
@@ -692,13 +683,13 @@ public final class BukkitKitsuneMain extends JavaPlugin {
             return chestInventory.getItem(itemSlot);
         }
 
-        java.util.List<NestedContainerRef> refs = path.containerRefs();
+        java.util.List<ContainerNode> refs = path.containerRefs();
         if (refs.isEmpty()) {
             return chestInventory.getItem(itemSlot);
         }
 
         // Start by getting the first container from the chest
-        int firstSlot = refs.get(0).slotIndex();
+        int firstSlot = refs.get(0).getSlotIndex();
         if (firstSlot < 0 || firstSlot >= chestInventory.getSize()) {
             return null;
         }
@@ -714,7 +705,7 @@ public final class BukkitKitsuneMain extends JavaPlugin {
                 return null;
             }
 
-            int containerSlot = refs.get(i).slotIndex();
+            int containerSlot = refs.get(i).getSlotIndex();
             if (containerSlot < 0 || containerSlot >= contents.size()) {
                 return null;
             }
@@ -784,7 +775,7 @@ public final class BukkitKitsuneMain extends JavaPlugin {
                         }
                         // Split by " → " and create container refs
                         String[] parts = pathString.split(" → ");
-                        java.util.List<NestedContainerRef> refs = new java.util.ArrayList<>();
+                        java.util.List<ContainerNode> refs = new java.util.ArrayList<>();
                         for (int i = 0; i < parts.length; i++) {
                             String part = parts[i].trim();
                             // Parse "Yellow shulker_box" or "Bundle" format
@@ -806,7 +797,7 @@ public final class BukkitKitsuneMain extends JavaPlugin {
                                 customName = part;
                             }
 
-                            refs.add(new NestedContainerRef(containerType, color, customName, i));
+                            refs.add(new ContainerNode(containerType, color, customName, i, null, null));
                         }
                         return new ContainerPath(refs);
                     }
@@ -835,11 +826,11 @@ public final class BukkitKitsuneMain extends JavaPlugin {
             sb.append(" → ");
 
             // Format the container name nicely
-            String containerName = ref.customName();
+            String containerName = ref.getCustomName();
             if (containerName == null || containerName.isEmpty()) {
                 // Use type with color if available
-                String type = ref.containerType();
-                String color = ref.color();
+                String type = ref.getContainerType();
+                String color = ref.getColor();
 
                 if ("shulker_box".equals(type)) {
                     if (color != null && !color.isEmpty()) {

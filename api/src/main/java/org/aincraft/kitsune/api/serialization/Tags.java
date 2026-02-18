@@ -27,9 +27,18 @@ public final class Tags implements Collection<String> {
     // ===== Fluent API methods (return this for chaining) =====
 
     /**
+     * Adds a single tag, returns this for chaining.
+     * Use this instead of Collection.add() for fluent style.
+     */
+    public Tags push(String tag) {
+        delegate.add(tag);
+        return this;
+    }
+
+    /**
      * Adds multiple tags, returns this for chaining.
      */
-    public Tags add(String... tags) {
+    public Tags push(String... tags) {
         Collections.addAll(delegate, tags);
         return this;
     }
@@ -37,7 +46,7 @@ public final class Tags implements Collection<String> {
     /**
      * Adds all from set, returns this for chaining.
      */
-    public Tags addAll(Set<String> tags) {
+    public Tags pushAll(Set<String> tags) {
         delegate.addAll(tags);
         return this;
     }
@@ -45,7 +54,7 @@ public final class Tags implements Collection<String> {
     /**
      * Conditionally adds tags, returns this for chaining.
      */
-    public Tags addIf(boolean condition, String... tags) {
+    public Tags pushIf(boolean condition, String... tags) {
         if (condition) {
             Collections.addAll(delegate, tags);
         }
@@ -58,16 +67,6 @@ public final class Tags implements Collection<String> {
     public Tags when(boolean condition, Consumer<Tags> action) {
         if (condition) {
             action.accept(this);
-        }
-        return this;
-    }
-
-    /**
-     * Adds tag if predicate matches the item, returns this for chaining.
-     */
-    public Tags addWhen(String tag, Predicate<String> predicate, String value) {
-        if (predicate.test(value)) {
-            delegate.add(tag);
         }
         return this;
     }

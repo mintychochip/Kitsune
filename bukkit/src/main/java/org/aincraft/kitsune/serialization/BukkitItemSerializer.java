@@ -1,55 +1,76 @@
 package org.aincraft.kitsune.serialization;
 
-import org.aincraft.kitsune.api.serialization.ItemSerializer;
 import org.aincraft.kitsune.api.serialization.TagProviderRegistry;
 import org.aincraft.kitsune.api.indexing.SerializedItem;
-import org.bukkit.block.Container;
+import org.aincraft.kitsune.api.model.ContainerNode;
+import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
+import org.aincraft.kitsune.serialization.ItemSerializationLogic;
 
-import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
 /**
- * Bukkit/Paper adapter for GenericItemSerializer.
- * Provides Bukkit-specific convenience methods and ItemStack support.
+ * Bukkit/Paper item serializer with clean typed API.
+ * Uses composition with ItemSerializationLogic for core serialization.
  */
-public class BukkitItemSerializer extends GenericItemSerializer {
+public final class BukkitItemSerializer {
+    private final ItemSerializationLogic logic;
+    private final BukkitItemAdapter adapter;
+
     public BukkitItemSerializer(TagProviderRegistry tagRegistry) {
-        super(tagRegistry, obj -> new BukkitItem((ItemStack) obj));
+        this.logic = new ItemSerializationLogic(tagRegistry);
+        this.adapter = new BukkitItemAdapter();
     }
 
     /**
-     * Convenience method for serializing ItemStack arrays (Bukkit inventory format).
+     * Serialize inventory contents.
      */
-    public List<SerializedItem> serializeItemsToChunks(ItemStack[] items) {
+    public List<SerializedItem> serialize(Inventory inventory) {
+        if (inventory == null) {
+            return Collections.emptyList();
+        }
+        return serialize(inventory.getContents());
+    }
+
+    /**
+     * Serialize ItemStack array (Bukkit inventory format).
+     */
+    public List<SerializedItem> serialize(ItemStack[] items) {
         if (items == null || items.length == 0) {
             return Collections.emptyList();
         }
-
-        List<ItemStack> itemList = new ArrayList<>();
-        for (ItemStack item : items) {
-            if (item != null && !item.getType().isAir()) {
-                itemList.add(item);
-            }
-        }
-        return serialize(itemList);
+        List<ItemStack> itemList = Arrays.asList(items);
+        return logic.serialize(adapter, itemList);
     }
 
     /**
-     * Convenience method for serializing ItemStack arrays with tree structure.
+     * Serialize ItemStack array with tree structure.
      */
-    public ContainerNode serializeItemsToChunksTree(ItemStack[] items) {
+    public ContainerNode serializeTree(ItemStack[] items) {
         if (items == null || items.length == 0) {
             return new ContainerNode("inventory", null, null, 0, Collections.emptyList());
         }
+        List<ItemStack> itemList = Arrays.asList(items);
+        return logic.serializeTree(adapter, itemList);
+    }
 
-        List<ItemStack> itemList = new ArrayList<>();
-        for (ItemStack item : items) {
-            if (item != null && !item.getType().isAir()) {
-                itemList.add(item);
-            }
-        }
-        return serializeTree(itemList);
+    /**
+     * Legacy method for backward compatibility.
+     * @deprecated Use {@link #serialize(ItemStack[])} instead
+     */
+    @Deprecated
+    public List<SerializedItem> serializeItemsToChunks(ItemStack[] items) {
+        return serialize(items);
+    }
+
+    /**
+     * Legacy method for backward compatibility.
+     * @deprecated Use {@link #serializeTree(ItemStack[])} instead
+     */
+    @Deprecated
+    public ContainerNode serializeItemsToChunksTree(ItemStack[] items) {
+        return serializeTree(items);
     }
 }

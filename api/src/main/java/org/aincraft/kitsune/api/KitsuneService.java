@@ -1,7 +1,6 @@
 package org.aincraft.kitsune.api;
 
 import org.aincraft.kitsune.api.serialization.TagProviderRegistry;
-import org.aincraft.kitsune.api.serialization.ItemSerializer;
 
 /**
  * Service locator for Kitsune platform services.
@@ -10,16 +9,14 @@ import org.aincraft.kitsune.api.serialization.ItemSerializer;
  */
 public final class KitsuneService {
     private static volatile TagProviderRegistry tagRegistry;
-    private static volatile ItemSerializer itemSerializer;
 
     private KitsuneService() {}
 
     /**
      * Register platform services. Called by platform implementation during startup.
      */
-    public static void register(TagProviderRegistry registry, ItemSerializer serializer) {
+    public static void register(TagProviderRegistry registry) {
         tagRegistry = registry;
-        itemSerializer = serializer;
     }
 
     /**
@@ -36,23 +33,10 @@ public final class KitsuneService {
     }
 
     /**
-     * Get the item serializer.
-     *
-     * @return The item serializer
-     * @throws IllegalStateException if Kitsune is not initialized
-     */
-    public static ItemSerializer getItemSerializer() {
-        if (itemSerializer == null) {
-            throw new IllegalStateException("Kitsune not initialized");
-        }
-        return itemSerializer;
-    }
-
-    /**
      * Check if Kitsune is initialized.
      */
     public static boolean isInitialized() {
-        return tagRegistry != null && itemSerializer != null;
+        return tagRegistry != null;
     }
 
     /**
@@ -60,6 +44,5 @@ public final class KitsuneService {
      */
     public static void unregister() {
         tagRegistry = null;
-        itemSerializer = null;
     }
 }

@@ -30,7 +30,7 @@ public final class TagProviders {
     private static void addMaterialTags(String material, Tags tags) {
         for (Map.Entry<Predicate<String>, Set<String>> entry : MATERIAL_TAGS.entrySet()) {
             if (entry.getKey().test(material)) {
-                tags.addAll(entry.getValue());
+                tags.pushAll(entry.getValue());
                 break;
             }
         }
@@ -40,38 +40,37 @@ public final class TagProviders {
     public static final TagProvider ENCHANTMENT = (tags, item) -> {
         var enchantments = item.enchantments();
         if (!enchantments.isEmpty()) {
-            tags.add("enchanted");
+            tags.push("enchanted");
         }
         for (var entry : enchantments.entrySet()) {
-            tags.add(entry.getKey())
-                .add(entry.getKey() + "_" + entry.getValue());
+            tags.push(entry.getKey(), entry.getKey() + "_" + entry.getValue());
         }
     };
 
     /** 2. Solid block provider - adds block type tags */
     public static final TagProvider SOLID_BLOCK = (tags, item) -> {
-        tags.addIf(item.isSolid(), "solid")
-            .addIf(item.isBlock(), "block");
+        tags.pushIf(item.isSolid(), "solid")
+            .pushIf(item.isBlock(), "block");
     };
 
     /** 3. Block opacity provider - adds transparency tags */
     public static final TagProvider BLOCK_OPACITY = (tags, item) -> {
-        tags.addIf(item.isOccluding(), "occluding")
-            .addIf(item.isBlock() && !item.isOccluding(), "transparent");
+        tags.pushIf(item.isOccluding(), "occluding")
+            .pushIf(item.isBlock() && !item.isOccluding(), "transparent");
     };
 
     /** 4. Block gravity provider - adds gravity tags */
     public static final TagProvider BLOCK_GRAVITY = (tags, item) -> {
-        tags.addIf(item.hasGravity(), "gravity", "falling");
+        tags.pushIf(item.hasGravity(), "gravity", "falling");
     };
 
     /** 5. Redstone provider - adds redstone-related tags */
     public static final TagProvider REDSTONE = (tags, item) -> {
         String m = item.material().toUpperCase();
-        tags.addIf(m.contains("REDSTONE"), "redstone")
-            .addIf(m.contains("POWERED"), "powered")
-            .addIf(m.contains("COMPARATOR"), "comparator")
-            .addIf(m.contains("REPEATER"), "repeater");
+        tags.pushIf(m.contains("REDSTONE"), "redstone")
+            .pushIf(m.contains("POWERED"), "powered")
+            .pushIf(m.contains("COMPARATOR"), "comparator")
+            .pushIf(m.contains("REPEATER"), "repeater");
     };
 
     /** 6. Block color provider - adds color tags */
@@ -81,7 +80,7 @@ public final class TagProviders {
         String m = item.material().toUpperCase();
         for (String color : colors) {
             if (m.startsWith(color.toUpperCase() + "_")) {
-                tags.add(color);
+                tags.push(color);
                 break;
             }
         }
@@ -92,55 +91,55 @@ public final class TagProviders {
         String u = item.material().toUpperCase();
 
         // Glass
-        tags.when(u.contains("GLASS"), t -> t.add("glass").addIf(u.contains("PANE"), "pane"));
+        tags.when(u.contains("GLASS"), t -> t.push("glass").pushIf(u.contains("PANE"), "pane"));
 
         // Wool
-        tags.when(u.contains("WOOL"), t -> t.add("wool", "soft"));
+        tags.when(u.contains("WOOL"), t -> t.push("wool", "soft"));
 
         // Concrete
-        tags.when(u.contains("CONCRETE"), t -> t.add("concrete").addIf(u.contains("POWDER"), "powder"));
+        tags.when(u.contains("CONCRETE"), t -> t.push("concrete").pushIf(u.contains("POWDER"), "powder"));
 
         // Terracotta
-        tags.when(u.contains("TERRACOTTA"), t -> t.add("terracotta", "clay").addIf(u.contains("GLAZED"), "glazed"));
+        tags.when(u.contains("TERRACOTTA"), t -> t.push("terracotta", "clay").pushIf(u.contains("GLAZED"), "glazed"));
 
         // Candles
-        tags.when(u.contains("CANDLE"), t -> t.add("candle", "lightsource"));
+        tags.when(u.contains("CANDLE"), t -> t.push("candle", "lightsource"));
 
         // Carpet
-        tags.when(u.contains("CARPET"), t -> t.add("carpet", "flooring"));
+        tags.when(u.contains("CARPET"), t -> t.push("carpet", "flooring"));
 
         // Beds
-        tags.when(u.contains("BED") && !u.contains("BEDROCK"), t -> t.add("bed", "furniture"));
+        tags.when(u.contains("BED") && !u.contains("BEDROCK"), t -> t.push("bed", "furniture"));
 
         // Banners
-        tags.when(u.contains("BANNER"), t -> t.add("banner", "decorative"));
+        tags.when(u.contains("BANNER"), t -> t.push("banner", "decorative"));
 
         // Shulker boxes
-        tags.when(u.contains("SHULKER"), t -> t.add("shulker", "storage", "container"));
+        tags.when(u.contains("SHULKER"), t -> t.push("shulker", "storage", "container"));
 
         // Wood types
-        tags.when(u.contains("OAK") && !u.contains("DARK_OAK"), t -> t.add("oak", "wood"));
-        tags.when(u.contains("SPRUCE"), t -> t.add("spruce", "wood"));
-        tags.when(u.contains("BIRCH"), t -> t.add("birch", "wood"));
-        tags.when(u.contains("JUNGLE"), t -> t.add("jungle", "wood"));
-        tags.when(u.contains("ACACIA"), t -> t.add("acacia", "wood"));
-        tags.when(u.contains("DARK_OAK"), t -> t.add("darkoak", "wood"));
-        tags.when(u.contains("MANGROVE"), t -> t.add("mangrove", "wood"));
-        tags.when(u.contains("CHERRY"), t -> t.add("cherry", "wood"));
-        tags.when(u.contains("BAMBOO"), t -> t.add("bamboo", "wood"));
-        tags.when(u.contains("CRIMSON"), t -> t.add("crimson", "netherstem"));
-        tags.when(u.contains("WARPED"), t -> t.add("warped", "netherstem"));
+        tags.when(u.contains("OAK") && !u.contains("DARK_OAK"), t -> t.push("oak", "wood"));
+        tags.when(u.contains("SPRUCE"), t -> t.push("spruce", "wood"));
+        tags.when(u.contains("BIRCH"), t -> t.push("birch", "wood"));
+        tags.when(u.contains("JUNGLE"), t -> t.push("jungle", "wood"));
+        tags.when(u.contains("ACACIA"), t -> t.push("acacia", "wood"));
+        tags.when(u.contains("DARK_OAK"), t -> t.push("darkoak", "wood"));
+        tags.when(u.contains("MANGROVE"), t -> t.push("mangrove", "wood"));
+        tags.when(u.contains("CHERRY"), t -> t.push("cherry", "wood"));
+        tags.when(u.contains("BAMBOO"), t -> t.push("bamboo", "wood"));
+        tags.when(u.contains("CRIMSON"), t -> t.push("crimson", "netherstem"));
+        tags.when(u.contains("WARPED"), t -> t.push("warped", "netherstem"));
 
         // Stone variants
         tags.when(u.contains("STONE") && !u.contains("REDSTONE") && !u.contains("GLOWSTONE") && !u.contains("SANDSTONE"),
-            t -> t.add("stone"));
-        tags.when(u.contains("COBBLESTONE"), t -> t.add("cobblestone", "cobble"));
-        tags.when(u.contains("DEEPSLATE"), t -> t.add("deepslate"));
-        tags.when(u.contains("BRICK"), t -> t.add("brick"));
-        tags.when(u.contains("SANDSTONE"), t -> t.add("sandstone"));
+            t -> t.push("stone"));
+        tags.when(u.contains("COBBLESTONE"), t -> t.push("cobblestone", "cobble"));
+        tags.when(u.contains("DEEPSLATE"), t -> t.push("deepslate"));
+        tags.when(u.contains("BRICK"), t -> t.push("brick"));
+        tags.when(u.contains("SANDSTONE"), t -> t.push("sandstone"));
 
         // Ores
-        tags.when(u.endsWith("_ORE"), t -> t.add("ore", "mineable"));
+        tags.when(u.endsWith("_ORE"), t -> t.push("ore", "mineable"));
     };
 
     /** 8. Mineral provider - adds mineral/ore tags */
@@ -149,42 +148,42 @@ public final class TagProviders {
 
         // Ores
         tags.when(u.endsWith("_ORE") || u.equals("NETHER_GOLD_ORE") || u.equals("ANCIENT_DEBRIS"),
-            t -> t.add("ore", "mineral", "mineable"));
+            t -> t.push("ore", "mineral", "mineable"));
 
         // Raw materials
-        tags.when(u.startsWith("RAW_"), t -> t.add("raw", "mineral", "smeltable"));
+        tags.when(u.startsWith("RAW_"), t -> t.push("raw", "mineral", "smeltable"));
 
         // Ingots
         tags.when(u.endsWith("_INGOT") || u.equals("NETHERITE_INGOT") || u.equals("COPPER_INGOT"),
-            t -> t.add("ingot", "mineral", "metal", "refined"));
+            t -> t.push("ingot", "mineral", "metal", "refined"));
 
         // Nuggets
-        tags.when(u.endsWith("_NUGGET"), t -> t.add("nugget", "mineral", "metal"));
+        tags.when(u.endsWith("_NUGGET"), t -> t.push("nugget", "mineral", "metal"));
 
         // Gems
         tags.when(Set.of("DIAMOND","EMERALD","AMETHYST_SHARD","LAPIS_LAZULI","PRISMARINE_SHARD",
                 "PRISMARINE_CRYSTALS","QUARTZ","NETHER_QUARTZ").contains(u),
-            t -> t.add("gem", "mineral", "precious"));
+            t -> t.push("gem", "mineral", "precious"));
 
         // Specific minerals
-        tags.when(u.contains("DIAMOND"), t -> t.add("diamond", "mineral"));
-        tags.when(u.contains("EMERALD"), t -> t.add("emerald", "mineral"));
-        tags.when(u.contains("GOLD") || u.contains("GOLDEN"), t -> t.add("gold", "mineral"));
-        tags.when(u.contains("IRON"), t -> t.add("iron", "mineral"));
-        tags.when(u.contains("COPPER"), t -> t.add("copper", "mineral"));
-        tags.when(u.contains("NETHERITE"), t -> t.add("netherite", "mineral"));
-        tags.when(u.contains("LAPIS"), t -> t.add("lapis", "mineral"));
-        tags.when(u.contains("REDSTONE"), t -> t.add("redstone", "mineral"));
-        tags.when(u.contains("QUARTZ"), t -> t.add("quartz", "mineral"));
-        tags.when(u.contains("AMETHYST"), t -> t.add("amethyst", "mineral"));
-        tags.when(u.contains("COAL") && !u.contains("CHARCOAL"), t -> t.add("coal", "mineral"));
+        tags.when(u.contains("DIAMOND"), t -> t.push("diamond", "mineral"));
+        tags.when(u.contains("EMERALD"), t -> t.push("emerald", "mineral"));
+        tags.when(u.contains("GOLD") || u.contains("GOLDEN"), t -> t.push("gold", "mineral"));
+        tags.when(u.contains("IRON"), t -> t.push("iron", "mineral"));
+        tags.when(u.contains("COPPER"), t -> t.push("copper", "mineral"));
+        tags.when(u.contains("NETHERITE"), t -> t.push("netherite", "mineral"));
+        tags.when(u.contains("LAPIS"), t -> t.push("lapis", "mineral"));
+        tags.when(u.contains("REDSTONE"), t -> t.push("redstone", "mineral"));
+        tags.when(u.contains("QUARTZ"), t -> t.push("quartz", "mineral"));
+        tags.when(u.contains("AMETHYST"), t -> t.push("amethyst", "mineral"));
+        tags.when(u.contains("COAL") && !u.contains("CHARCOAL"), t -> t.push("coal", "mineral"));
 
         // Mineral blocks
         tags.when(u.endsWith("_BLOCK") && (u.contains("DIAMOND")||u.contains("EMERALD")||u.contains("GOLD")||
                 u.contains("IRON")||u.contains("COPPER")||u.contains("NETHERITE")||u.contains("LAPIS")||
                 u.contains("REDSTONE")||u.contains("COAL")||u.contains("AMETHYST")||u.contains("QUARTZ")||
                 u.contains("RAW_")),
-            t -> t.add("mineralblock", "storage"));
+            t -> t.push("mineralblock", "storage"));
     };
 
     /** 9. Weapon provider - adds weapon tags */
@@ -193,43 +192,43 @@ public final class TagProviders {
 
         // Swords
         tags.when(u.endsWith("_SWORD"), t -> {
-            t.add("weapon", "sword", "melee", "combat");
+            t.push("weapon", "sword", "melee", "combat");
             addMaterialTags(u, t);
         });
 
         // Axes (weapons)
         tags.when(u.endsWith("_AXE") && !u.contains("PICKAXE"), t -> {
-            t.add("weapon", "axe", "melee", "combat");
+            t.push("weapon", "axe", "melee", "combat");
             addMaterialTags(u, t);
         });
 
         // Bows
-        tags.when(u.equals("BOW"), t -> t.add("weapon", "bow", "ranged", "projectile", "combat"));
-        tags.when(u.equals("CROSSBOW"), t -> t.add("weapon", "crossbow", "ranged", "projectile", "combat"));
+        tags.when(u.equals("BOW"), t -> t.push("weapon", "bow", "ranged", "projectile", "combat"));
+        tags.when(u.equals("CROSSBOW"), t -> t.push("weapon", "crossbow", "ranged", "projectile", "combat"));
 
         // Trident
-        tags.when(u.equals("TRIDENT"), t -> t.add("weapon", "trident", "melee", "ranged", "throwable", "combat"));
+        tags.when(u.equals("TRIDENT"), t -> t.push("weapon", "trident", "melee", "ranged", "throwable", "combat"));
 
         // Mace
-        tags.when(u.equals("MACE"), t -> t.add("weapon", "mace", "melee", "combat", "heavyhitter"));
+        tags.when(u.equals("MACE"), t -> t.push("weapon", "mace", "melee", "combat", "heavyhitter"));
 
         // Arrows
         tags.when(u.contains("ARROW"), t -> {
-            t.add("ammo", "ammunition", "projectile", "combat");
-            t.addIf(u.equals("SPECTRAL_ARROW"), "spectral");
-            t.addIf(u.equals("TIPPED_ARROW"), "tipped", "potion");
+            t.push("ammo", "ammunition", "projectile", "combat");
+            t.pushIf(u.equals("SPECTRAL_ARROW"), "spectral");
+            t.pushIf(u.equals("TIPPED_ARROW"), "tipped", "potion");
         });
 
         // Firework
-        tags.when(u.equals("FIREWORK_ROCKET"), t -> t.add("ammo", "firework", "projectile", "elytra"));
+        tags.when(u.equals("FIREWORK_ROCKET"), t -> t.push("ammo", "firework", "projectile", "elytra"));
 
         // Throwables
-        tags.when(u.equals("SNOWBALL") || u.equals("EGG"), t -> t.add("weapon", "throwable", "projectile"));
-        tags.when(u.equals("ENDER_PEARL"), t -> t.add("throwable", "teleport", "projectile"));
-        tags.when(u.equals("WIND_CHARGE"), t -> t.add("weapon", "throwable", "projectile", "knockback"));
+        tags.when(u.equals("SNOWBALL") || u.equals("EGG"), t -> t.push("weapon", "throwable", "projectile"));
+        tags.when(u.equals("ENDER_PEARL"), t -> t.push("throwable", "teleport", "projectile"));
+        tags.when(u.equals("WIND_CHARGE"), t -> t.push("weapon", "throwable", "projectile", "knockback"));
 
         // Shield
-        tags.when(u.equals("SHIELD"), t -> t.add("weapon", "shield", "defense", "combat", "blocking"));
+        tags.when(u.equals("SHIELD"), t -> t.push("weapon", "shield", "defense", "combat", "blocking"));
     };
 
     /** 10. Tool provider - adds tool tags */
@@ -237,54 +236,54 @@ public final class TagProviders {
         String u = item.material().toUpperCase();
 
         // Pickaxes, Shovels, Hoes
-        tags.when(u.endsWith("_PICKAXE"), t -> { t.add("tool", "pickaxe", "mining", "breaking"); addMaterialTags(u, t); });
-        tags.when(u.endsWith("_SHOVEL"), t -> { t.add("tool", "shovel", "digging", "breaking"); addMaterialTags(u, t); });
-        tags.when(u.endsWith("_HOE"), t -> { t.add("tool", "hoe", "farming", "tilling"); addMaterialTags(u, t); });
+        tags.when(u.endsWith("_PICKAXE"), t -> { t.push("tool", "pickaxe", "mining", "breaking"); addMaterialTags(u, t); });
+        tags.when(u.endsWith("_SHOVEL"), t -> { t.push("tool", "shovel", "digging", "breaking"); addMaterialTags(u, t); });
+        tags.when(u.endsWith("_HOE"), t -> { t.push("tool", "hoe", "farming", "tilling"); addMaterialTags(u, t); });
 
         // Axes (tools)
         tags.when(u.endsWith("_AXE") && !u.contains("PICKAXE"), t -> {
-            t.add("tool", "axe", "woodcutting", "chopping", "breaking");
+            t.push("tool", "axe", "woodcutting", "chopping", "breaking");
             addMaterialTags(u, t);
         });
 
         // Other tools
-        tags.when(u.equals("SHEARS"), t -> t.add("tool", "shears", "shearing", "harvesting"));
-        tags.when(u.equals("FLINT_AND_STEEL"), t -> t.add("tool", "flintandsteel", "fire", "igniter"));
-        tags.when(u.equals("FISHING_ROD"), t -> t.add("tool", "fishingrod", "fishing", "catching"));
-        tags.when(u.equals("CARROT_ON_A_STICK") || u.equals("WARPED_FUNGUS_ON_A_STICK"), t -> t.add("tool", "riding", "control"));
-        tags.when(u.equals("LEAD"), t -> t.add("tool", "lead", "leash", "mob"));
-        tags.when(u.equals("NAME_TAG"), t -> t.add("tool", "nametag", "naming", "mob"));
-        tags.when(u.equals("BRUSH"), t -> t.add("tool", "brush", "archaeology", "excavation"));
-        tags.when(u.equals("SPYGLASS"), t -> t.add("tool", "spyglass", "zoom", "scouting"));
+        tags.when(u.equals("SHEARS"), t -> t.push("tool", "shears", "shearing", "harvesting"));
+        tags.when(u.equals("FLINT_AND_STEEL"), t -> t.push("tool", "flintandsteel", "fire", "igniter"));
+        tags.when(u.equals("FISHING_ROD"), t -> t.push("tool", "fishingrod", "fishing", "catching"));
+        tags.when(u.equals("CARROT_ON_A_STICK") || u.equals("WARPED_FUNGUS_ON_A_STICK"), t -> t.push("tool", "riding", "control"));
+        tags.when(u.equals("LEAD"), t -> t.push("tool", "lead", "leash", "mob"));
+        tags.when(u.equals("NAME_TAG"), t -> t.push("tool", "nametag", "naming", "mob"));
+        tags.when(u.equals("BRUSH"), t -> t.push("tool", "brush", "archaeology", "excavation"));
+        tags.when(u.equals("SPYGLASS"), t -> t.push("tool", "spyglass", "zoom", "scouting"));
 
         // Compass
         tags.when(u.equals("COMPASS") || u.equals("RECOVERY_COMPASS"), t -> {
-            t.add("tool", "compass", "navigation");
-            t.addIf(u.equals("RECOVERY_COMPASS"), "recovery", "death");
+            t.push("tool", "compass", "navigation");
+            t.pushIf(u.equals("RECOVERY_COMPASS"), "recovery", "death");
         });
 
-        tags.when(u.equals("CLOCK"), t -> t.add("tool", "clock", "time"));
+        tags.when(u.equals("CLOCK"), t -> t.push("tool", "clock", "time"));
 
         // Maps
         tags.when(u.contains("MAP"), t -> {
-            t.add("tool", "map", "navigation");
-            t.addIf(u.equals("FILLED_MAP"), "filled");
+            t.push("tool", "map", "navigation");
+            t.pushIf(u.equals("FILLED_MAP"), "filled");
         });
 
         // Buckets
         tags.when(u.contains("BUCKET"), t -> {
-            t.add("tool", "bucket", "container");
-            t.addIf(u.equals("WATER_BUCKET"), "water")
-             .addIf(u.equals("LAVA_BUCKET"), "lava")
-             .addIf(u.equals("MILK_BUCKET"), "milk")
-             .addIf(u.equals("POWDER_SNOW_BUCKET"), "powdersnow");
+            t.push("tool", "bucket", "container");
+            t.pushIf(u.equals("WATER_BUCKET"), "water")
+             .pushIf(u.equals("LAVA_BUCKET"), "lava")
+             .pushIf(u.equals("MILK_BUCKET"), "milk")
+             .pushIf(u.equals("POWDER_SNOW_BUCKET"), "powdersnow");
             t.when(u.contains("FISH_BUCKET") || u.equals("AXOLOTL_BUCKET") || u.equals("TADPOLE_BUCKET"),
-                bt -> bt.add("mobbucket", "mob"));
+                bt -> bt.push("mobbucket", "mob"));
         });
 
         // Other
-        tags.when(u.equals("BONE_MEAL"), t -> t.add("tool", "bonemeal", "farming", "growth"));
-        tags.when(u.equals("WRITABLE_BOOK") || u.equals("WRITTEN_BOOK"), t -> t.add("tool", "book", "writing"));
+        tags.when(u.equals("BONE_MEAL"), t -> t.push("tool", "bonemeal", "farming", "growth"));
+        tags.when(u.equals("WRITABLE_BOOK") || u.equals("WRITTEN_BOOK"), t -> t.push("tool", "book", "writing"));
     };
 
     /** 11. Armor provider - adds armor tags */
@@ -293,66 +292,66 @@ public final class TagProviders {
 
         // Helmets
         tags.when(TagMatch.any(TagMatch.endsWith("_HELMET"), TagMatch.equals("TURTLE_HELMET")).test(u), t -> {
-            t.add("armor", "helmet", "headgear", "head", "wearable");
+            t.push("armor", "helmet", "headgear", "head", "wearable");
             addMaterialTags(u, t);
-            t.addIf(u.equals("TURTLE_HELMET"), "turtle", "waterbreathing");
+            t.pushIf(u.equals("TURTLE_HELMET"), "turtle", "waterbreathing");
         });
 
         // Chestplates, Leggings, Boots
-        tags.when(u.endsWith("_CHESTPLATE"), t -> { t.add("armor", "chestplate", "chest", "body", "wearable"); addMaterialTags(u, t); });
-        tags.when(u.endsWith("_LEGGINGS"), t -> { t.add("armor", "leggings", "pants", "legs", "wearable"); addMaterialTags(u, t); });
-        tags.when(u.endsWith("_BOOTS"), t -> { t.add("armor", "boots", "footwear", "feet", "wearable"); addMaterialTags(u, t); });
+        tags.when(u.endsWith("_CHESTPLATE"), t -> { t.push("armor", "chestplate", "chest", "body", "wearable"); addMaterialTags(u, t); });
+        tags.when(u.endsWith("_LEGGINGS"), t -> { t.push("armor", "leggings", "pants", "legs", "wearable"); addMaterialTags(u, t); });
+        tags.when(u.endsWith("_BOOTS"), t -> { t.push("armor", "boots", "footwear", "feet", "wearable"); addMaterialTags(u, t); });
 
         // Elytra
-        tags.when(u.equals("ELYTRA"), t -> t.add("armor", "elytra", "wings", "chest", "wearable", "flying", "gliding"));
+        tags.when(u.equals("ELYTRA"), t -> t.push("armor", "elytra", "wings", "chest", "wearable", "flying", "gliding"));
 
         // Horse armor
         tags.when(u.contains("_HORSE_ARMOR"), t -> {
-            t.add("armor", "horsearmor", "horse", "mount", "pet");
-            t.addIf(u.contains("IRON"), "iron")
-             .addIf(u.contains("GOLDEN") || u.contains("GOLD"), "gold")
-             .addIf(u.contains("DIAMOND"), "diamond")
-             .addIf(u.contains("LEATHER"), "leather");
+            t.push("armor", "horsearmor", "horse", "mount", "pet");
+            t.pushIf(u.contains("IRON"), "iron")
+             .pushIf(u.contains("GOLDEN") || u.contains("GOLD"), "gold")
+             .pushIf(u.contains("DIAMOND"), "diamond")
+             .pushIf(u.contains("LEATHER"), "leather");
         });
 
         // Wolf armor
-        tags.when(u.equals("WOLF_ARMOR"), t -> t.add("armor", "wolfarmor", "wolf", "pet"));
+        tags.when(u.equals("WOLF_ARMOR"), t -> t.push("armor", "wolfarmor", "wolf", "pet"));
 
         // Leather/Chainmail special
-        tags.when(u.startsWith("LEATHER_"), t -> t.add("leather", "dyeable"));
-        tags.when(u.startsWith("CHAINMAIL_"), t -> t.add("chainmail", "chain"));
+        tags.when(u.startsWith("LEATHER_"), t -> t.push("leather", "dyeable"));
+        tags.when(u.startsWith("CHAINMAIL_"), t -> t.push("chainmail", "chain"));
 
         // Heads/skulls
         tags.when(u.contains("_HEAD") || u.contains("_SKULL") || u.equals("PLAYER_HEAD") || u.equals("DRAGON_HEAD"), t -> {
-            t.add("head", "headgear", "wearable", "decorative");
-            t.addIf(u.contains("SKELETON"), "skeleton")
-             .addIf(u.contains("ZOMBIE"), "zombie")
-             .addIf(u.contains("CREEPER"), "creeper")
-             .addIf(u.contains("WITHER"), "wither")
-             .addIf(u.contains("DRAGON"), "dragon")
-             .addIf(u.contains("PIGLIN"), "piglin")
-             .addIf(u.contains("PLAYER"), "player");
+            t.push("head", "headgear", "wearable", "decorative");
+            t.pushIf(u.contains("SKELETON"), "skeleton")
+             .pushIf(u.contains("ZOMBIE"), "zombie")
+             .pushIf(u.contains("CREEPER"), "creeper")
+             .pushIf(u.contains("WITHER"), "wither")
+             .pushIf(u.contains("DRAGON"), "dragon")
+             .pushIf(u.contains("PIGLIN"), "piglin")
+             .pushIf(u.contains("PLAYER"), "player");
         });
 
         // Carved pumpkin
-        tags.when(u.equals("CARVED_PUMPKIN"), t -> t.add("head", "headgear", "wearable", "pumpkin", "enderman"));
+        tags.when(u.equals("CARVED_PUMPKIN"), t -> t.push("head", "headgear", "wearable", "pumpkin", "enderman"));
     };
 
     /** 12. Storage provider - adds storage container tags */
     public static final TagProvider STORAGE = (tags, item) -> {
         String u = item.material().toUpperCase();
 
-        tags.when(item.hasBundle(), t -> t.add("bundle", "storage", "container"));
-        tags.when(item.hasShulkerContents(), t -> t.add("shulkerbox", "storage", "container"));
-        tags.when(u.contains("SHULKER_BOX"), t -> t.add("shulkerbox", "storage", "container"));
-        tags.when(u.contains("CHEST"), t -> t.add("chest", "storage"));
-        tags.when(u.contains("BARREL"), t -> t.add("barrel", "storage"));
-        tags.when(u.equals("BUNDLE"), t -> t.add("bundle", "storage", "container"));
+        tags.when(item.hasBundle(), t -> t.push("bundle", "storage", "container"));
+        tags.when(item.hasShulkerContents(), t -> t.push("shulkerbox", "storage", "container"));
+        tags.when(u.contains("SHULKER_BOX"), t -> t.push("shulkerbox", "storage", "container"));
+        tags.when(u.contains("CHEST"), t -> t.push("chest", "storage"));
+        tags.when(u.contains("BARREL"), t -> t.push("barrel", "storage"));
+        tags.when(u.equals("BUNDLE"), t -> t.push("bundle", "storage", "container"));
     };
 
     /** 13. Unbreakable provider - adds unbreakable tag */
     public static final TagProvider UNBREAKABLE = (tags, item) -> {
-        tags.addIf(item.isUnbreakable(), "unbreakable");
+        tags.pushIf(item.isUnbreakable(), "unbreakable");
     };
 
     /**

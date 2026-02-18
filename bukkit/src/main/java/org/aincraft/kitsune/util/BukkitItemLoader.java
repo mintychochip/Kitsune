@@ -5,7 +5,7 @@ import org.aincraft.kitsune.Location;
 import org.aincraft.kitsune.api.indexing.ItemLoader;
 import org.aincraft.kitsune.api.model.ContainerPath;
 import org.aincraft.kitsune.Item;
-import org.aincraft.kitsune.api.model.NestedContainerRef;
+import org.aincraft.kitsune.api.model.ContainerNode;
 import org.aincraft.kitsune.serialization.BukkitItem;
 import org.bukkit.Bukkit;
 import org.bukkit.inventory.Inventory;
@@ -136,13 +136,13 @@ public class BukkitItemLoader implements ItemLoader {
             return chestInventory.getItem(itemSlot);
         }
 
-        List<NestedContainerRef> refs = path.containerRefs();
+        List<ContainerNode> refs = path.containerRefs();
         if (refs.isEmpty()) {
             return chestInventory.getItem(itemSlot);
         }
 
         // Start by getting the first container from the chest
-        int firstSlot = refs.get(0).slotIndex();
+        int firstSlot = refs.get(0).getSlotIndex();
         if (firstSlot < 0 || firstSlot >= chestInventory.getSize()) {
             return null;
         }
@@ -158,7 +158,7 @@ public class BukkitItemLoader implements ItemLoader {
                 return null;
             }
 
-            int containerSlot = refs.get(i).slotIndex();
+            int containerSlot = refs.get(i).getSlotIndex();
             if (containerSlot < 0 || containerSlot >= contents.size()) {
                 return null;
             }

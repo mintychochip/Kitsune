@@ -35,10 +35,11 @@ import java.util.logging.Logger;
  * Uses an in-memory vector store with an on-disk graph index for persistence.
  *
  * Architecture:
- * - In-memory: List<VectorFloat<?>> vectors indexed by ordinal
+ * - In-memory: Map of databaseOrdinal -> VectorFloat<?>
  * - On-disk: vectors.idx containing the HNSW graph and vector data
  * - Thread-safe: ReadWriteLock ensures safe concurrent access
  * - Lazy rebuild: Index marked dirty on mutations, rebuilt before next search
+ * - Ordinal mapping: Internal JVector ordinals (0,1,2...) mapped to database ordinals
  *
  * Graph parameters (configurable):
  * - GRAPH_DEGREE = 16 (max neighbors per node)
@@ -59,8 +60,14 @@ public final class JVectorIndex implements VectorIndex {
     private final ScheduledExecutorService executor = Executors.newScheduledThreadPool(4);
     private final ReadWriteLock indexLock = new ReentrantReadWriteLock();
 
-    // In-memory vector storage indexed by ordinal
-    private final List<VectorFloat<?>> vectors = new ArrayList<>();
+    // Map: database ordinal -> vector (sparse, preserves original ordinals)
+    private final Map<Integer, VectorFloat<?>> vectorMap = new HashMap<>();
+
+    // Mapping: internal ordinal (0,1,2...) -> database ordinal
+    private final List<Integer> internalToDatabaseOrdinal = new ArrayList<>();
+
+    // Reverse mapping: database ordinal -> internal ordinal
+    private final Map<Integer, Integer> databaseToInternalOrdinal = new HashMap<>();
 
     // On-disk graph index state
     private OnDiskGraphIndex graphIndex;
@@ -102,62 +109,65 @@ public final class JVectorIndex implements VectorIndex {
      */
     private void loadIndex() {
         Path indexPath = dataDir.resolve("vectors.idx");
+        Path mappingPath = dataDir.resolve("ordinals.map");
 
-        if (Files.exists(indexPath)) {
+        if (Files.exists(indexPath) && Files.exists(mappingPath)) {
             try {
+                // Load ordinal mapping first
+                List<String> lines = Files.readAllLines(mappingPath);
+                internalToDatabaseOrdinal.clear();
+                databaseToInternalOrdinal.clear();
+
+                for (int internalOrdinal = 0; internalOrdinal < lines.size(); internalOrdinal++) {
+                    int dbOrdinal = Integer.parseInt(lines.get(internalOrdinal).trim());
+                    internalToDatabaseOrdinal.add(dbOrdinal);
+                    databaseToInternalOrdinal.put(dbOrdinal, internalOrdinal);
+                }
+
                 readerSupplier = ReaderSupplierFactory.open(indexPath);
                 graphIndex = OnDiskGraphIndex.load(readerSupplier);
 
                 int graphSize = graphIndex.size();
                 logger.info("Loaded JVectorIndex graph with " + graphSize + " nodes");
 
-                // Load vectors from graph's view
+                // Load vectors from graph's view into map
                 var graphView = graphIndex.getView();
-                for (int ordinal = 0; ordinal < graphSize; ordinal++) {
+                vectorMap.clear();
+
+                for (int internalOrdinal = 0; internalOrdinal < graphSize && internalOrdinal < internalToDatabaseOrdinal.size(); internalOrdinal++) {
                     try {
-                        VectorFloat<?> vec = graphView.getVector(ordinal);
+                        VectorFloat<?> vec = graphView.getVector(internalOrdinal);
                         if (vec != null) {
-                            // Expand vectors list to fit ordinal
-                            while (vectors.size() <= ordinal) {
-                                vectors.add(null);
-                            }
-                            vectors.set(ordinal, vec);
+                            int dbOrdinal = internalToDatabaseOrdinal.get(internalOrdinal);
+                            vectorMap.put(dbOrdinal, vec);
                         }
                     } catch (Exception e) {
-                        logger.warning("Failed to load vector for ordinal " + ordinal + ": " + e.getMessage());
+                        logger.warning("Failed to load vector for internal ordinal " + internalOrdinal + ": " + e.getMessage());
                     }
                 }
 
-                long validVectorCount = vectors.size();
-                logger.info("Loaded " + validVectorCount + " vectors from JVectorIndex graph");
+                logger.info("Loaded " + vectorMap.size() + " vectors from JVectorIndex graph");
             } catch (Exception e) {
                 logger.warning("Failed to load existing index, will rebuild: " + e.getMessage());
-                graphIndex = null;
-                if (readerSupplier != null) {
-                    try {
-                        readerSupplier.close();
-                    } catch (Exception ignored) {}
-                    readerSupplier = null;
-                }
+                cleanupGraphIndex();
                 indexDirty = true;
             }
+        } else if (Files.exists(indexPath)) {
+            // Index exists but no mapping - need to rebuild
+            logger.warning("Index exists but ordinal mapping missing, will rebuild");
+            cleanupGraphIndex();
+            indexDirty = true;
         }
     }
 
     @Override
-    public CompletableFuture<Void> addVector(int ordinal, float[] embedding) {
+    public CompletableFuture<Void> addVector(int databaseOrdinal, float[] embedding) {
         return CompletableFuture.runAsync(() -> {
             indexLock.writeLock().lock();
             try {
-                // Expand vectors list to fit ordinal
-                while (vectors.size() <= ordinal) {
-                    vectors.add(null);
-                }
-
-                // Add or update vector
-                vectors.set(ordinal, toVectorFloat(embedding));
+                vectorMap.put(databaseOrdinal, toVectorFloat(embedding));
                 indexDirty = true;
-                logger.fine("Added vector at ordinal " + ordinal);
+                logger.fine("Added vector at database ordinal " + databaseOrdinal);
             } finally {
                 indexLock.writeLock().unlock();
             }
@@ -165,15 +175,13 @@ public final class JVectorIndex implements VectorIndex {
     }
 
     @Override
-    public CompletableFuture<Void> removeVector(int ordinal) {
+    public CompletableFuture<Void> removeVector(int databaseOrdinal) {
         return CompletableFuture.runAsync(() -> {
             indexLock.writeLock().lock();
             try {
-                if (ordinal >= 0 && ordinal < vectors.size()) {
-                    vectors.set(ordinal, null);
-                    indexDirty = true;
-                    logger.fine("Removed vector at ordinal " + ordinal);
-                }
+                vectorMap.remove(databaseOrdinal);
+                indexDirty = true;
+                logger.fine("Removed vector at database ordinal " + databaseOrdinal);
             } finally {
                 indexLock.writeLock().unlock();
             }
@@ -196,11 +204,11 @@ public final class JVectorIndex implements VectorIndex {
      *
      * @param queryEmbedding the query vector
      * @param limit maximum results
-     * @param allowedOrdinals optional set to filter by; null means no filtering
-     * @return list of search results
+     * @param allowedDatabaseOrdinals optional set of DATABASE ordinals to filter by; null means no filtering
+     * @return list of search results with DATABASE ordinals
      */
     private CompletableFuture<List<VectorSearchResult>> search(
-            float[] queryEmbedding, int limit, Set<Integer> allowedOrdinals) {
+            float[] queryEmbedding, int limit, Set<Integer> allowedDatabaseOrdinals) {
         return CompletableFuture.supplyAsync(() -> {
             // Rebuild index if needed - BEFORE acquiring read lock to avoid deadlock
             if (indexDirty || graphIndex == null) {
@@ -217,41 +225,59 @@ public final class JVectorIndex implements VectorIndex {
 
             indexLock.readLock().lock();
             try {
-                if (graphIndex == null || vectors.isEmpty()) {
+                if (graphIndex == null || vectorMap.isEmpty()) {
                     logger.info("Search aborted: graphIndex=" + (graphIndex != null)
-                            + ", vectorCount=" + vectors.size());
+                            + ", vectorCount=" + vectorMap.size());
                     return Collections.emptyList();
                 }
 
                 VectorFloat<?> queryVector = toVectorFloat(queryEmbedding);
                 List<VectorSearchResult> results = new ArrayList<>();
 
+                // Build list of vectors for search (in internal ordinal order)
+                List<VectorFloat<?>> searchVectors = new ArrayList<>();
+                for (int i = 0; i < internalToDatabaseOrdinal.size(); i++) {
+                    int dbOrdinal = internalToDatabaseOrdinal.get(i);
+                    searchVectors.add(vectorMap.get(dbOrdinal));
+                }
+
                 try (GraphSearcher searcher = new GraphSearcher(graphIndex)) {
-                    ListRandomAccessVectorValues ravv = new ListRandomAccessVectorValues(vectors, dimension);
+                    ListRandomAccessVectorValues ravv = new ListRandomAccessVectorValues(searchVectors, dimension);
                     DefaultSearchScoreProvider ssp = DefaultSearchScoreProvider.exact(
                             queryVector, VectorSimilarityFunction.COSINE, ravv
                     );
 
-                    // Create optional filter bits
-                    Bits filterBits = (allowedOrdinals != null && !allowedOrdinals.isEmpty())
-                            ? allowedOrdinals::contains
-                            : Bits.ALL;
+                    // Convert database ordinal filter to internal ordinal filter
+                    Bits filterBits;
+                    if (allowedDatabaseOrdinals != null && !allowedDatabaseOrdinals.isEmpty()) {
+                        // Create filter for internal ordinals that map to allowed database ordinals
+                        filterBits = internalOrdinal -> {
+                            if (internalOrdinal >= internalToDatabaseOrdinal.size()) return false;
+                            int dbOrdinal = internalToDatabaseOrdinal.get(internalOrdinal);
+                            return allowedDatabaseOrdinals.contains(dbOrdinal);
+                        };
+                    } else {
+                        filterBits = Bits.ALL;
+                    }
 
-                    int searchLimit = Math.min(limit * 10, vectors.size());
+                    int searchLimit = Math.min(limit * 10, searchVectors.size());
                     SearchResult sr = searcher.search(ssp, searchLimit, filterBits);
 
-                    // Convert search results to VectorSearchResult
+                    // Convert search results: internal ordinal -> database ordinal
                     for (SearchResult.NodeScore nodeScore : sr.getNodes()) {
-                        int ordinal = nodeScore.node;
+                        int internalOrdinal = nodeScore.node;
 
-                        // Safety check: skip stale ordinals
-                        if (ordinal >= vectors.size()) {
-                            logger.warning("Skipping stale ordinal " + ordinal);
+                        // Skip if out of range
+                        if (internalOrdinal >= internalToDatabaseOrdinal.size()) {
+                            logger.warning("Skipping stale internal ordinal " + internalOrdinal);
                             continue;
                         }
 
-                        if (vectors.get(ordinal) != null) {
-                            results.add(new VectorSearchResult(ordinal, nodeScore.score));
+                        int databaseOrdinal = internalToDatabaseOrdinal.get(internalOrdinal);
+
+                        // Verify vector still exists
+                        if (vectorMap.containsKey(databaseOrdinal)) {
+                            results.add(new VectorSearchResult(databaseOrdinal, nodeScore.score));
                             if (results.size() >= limit) {
                                 break;
                             }
@@ -271,18 +297,16 @@ public final class JVectorIndex implements VectorIndex {
     }
 
     @Override
-    public Optional<float[]> getVector(int ordinal) {
+    public Optional<float[]> getVector(int databaseOrdinal) {
         indexLock.readLock().lock();
         try {
-            if (ordinal >= 0 && ordinal < vectors.size()) {
-                VectorFloat<?> vf = vectors.get(ordinal);
-                if (vf != null) {
-                    float[] arr = new float[dimension];
-                    for (int i = 0; i < Math.min(dimension, vf.length()); i++) {
-                        arr[i] = vf.get(i);
-                    }
-                    return Optional.of(arr);
+            VectorFloat<?> vf = vectorMap.get(databaseOrdinal);
+            if (vf != null) {
+                float[] arr = new float[dimension];
+                for (int i = 0; i < Math.min(dimension, vf.length()); i++) {
+                    arr[i] = vf.get(i);
                 }
+                return Optional.of(arr);
             }
             return Optional.empty();
         } finally {
@@ -304,7 +328,7 @@ public final class JVectorIndex implements VectorIndex {
 
     /**
      * Internal index rebuild logic - must be called with write lock held.
-     * Compacts ordinal space by removing holes from deleted vectors.
+     * Builds contiguous index with ordinal mapping to preserve database ordinals.
      */
     private void rebuildIndexInternal() {
         try {
@@ -312,40 +336,42 @@ public final class JVectorIndex implements VectorIndex {
                 return;
             }
 
-            // Build compaction map: oldOrdinal -> newOrdinal
-            Map<Integer, Integer> oldToNew = new HashMap<>();
-            List<VectorFloat<?>> compactVectors = new ArrayList<>();
-
-            int newOrdinal = 0;
-            for (int oldOrdinal = 0; oldOrdinal < vectors.size(); oldOrdinal++) {
-                VectorFloat<?> vec = vectors.get(oldOrdinal);
-                if (vec != null) {
-                    oldToNew.put(oldOrdinal, newOrdinal);
-                    compactVectors.add(vec);
-                    newOrdinal++;
-                }
-            }
-
-            if (compactVectors.isEmpty()) {
+            if (vectorMap.isEmpty()) {
                 logger.info("No vectors to index, clearing index");
                 cleanupGraphIndex();
+                internalToDatabaseOrdinal.clear();
+                databaseToInternalOrdinal.clear();
                 indexDirty = false;
                 return;
             }
 
-            // Replace in-memory structure with compacted version
-            vectors.clear();
-            vectors.addAll(compactVectors);
+            logger.info("Rebuilding JVectorIndex with " + vectorMap.size() + " vectors");
 
-            logger.info("Rebuilding JVectorIndex with " + compactVectors.size() + " vectors");
-
-            // Delete old index file to ensure clean rebuild
+            // Delete old index files
             Path indexPath = dataDir.resolve("vectors.idx");
+            Path mappingPath = dataDir.resolve("ordinals.map");
             cleanupGraphIndex();
             Files.deleteIfExists(indexPath);
+            Files.deleteIfExists(mappingPath);
 
-            // Build new graph index
-            ListRandomAccessVectorValues ravv = new ListRandomAccessVectorValues(compactVectors, dimension);
+            // Build sorted list of database ordinals for consistent ordering
+            List<Integer> sortedDbOrdinals = new ArrayList<>(vectorMap.keySet());
+            Collections.sort(sortedDbOrdinals);
+
+            // Build mapping and vector list
+            internalToDatabaseOrdinal.clear();
+            databaseToInternalOrdinal.clear();
+            List<VectorFloat<?>> indexedVectors = new ArrayList<>();
+
+            for (int internalOrdinal = 0; internalOrdinal < sortedDbOrdinals.size(); internalOrdinal++) {
+                int dbOrdinal = sortedDbOrdinals.get(internalOrdinal);
+                internalToDatabaseOrdinal.add(dbOrdinal);
+                databaseToInternalOrdinal.put(dbOrdinal, internalOrdinal);
+                indexedVectors.add(vectorMap.get(dbOrdinal));
+            }
+
+            // Build graph index
+            ListRandomAccessVectorValues ravv = new ListRandomAccessVectorValues(indexedVectors, dimension);
             BuildScoreProvider bsp = BuildScoreProvider.randomAccessScoreProvider(
                     ravv, VectorSimilarityFunction.COSINE
             );
@@ -353,19 +379,26 @@ public final class JVectorIndex implements VectorIndex {
             try (GraphIndexBuilder builder = new GraphIndexBuilder(
                     bsp, dimension, GRAPH_DEGREE, CONSTRUCTION_SEARCH_DEPTH,
                     OVERFLOW_FACTOR, ALPHA,
-                    false)) { // addHierarchy
+                    false)) {
 
                 var index = builder.build(ravv);
 
-                // Write to disk
+                // Write index to disk
                 OnDiskGraphIndex.write(index, ravv, indexPath);
+
+                // Write ordinal mapping to disk
+                List<String> mappingLines = new ArrayList<>();
+                for (int dbOrdinal : internalToDatabaseOrdinal) {
+                    mappingLines.add(String.valueOf(dbOrdinal));
+                }
+                Files.write(mappingPath, mappingLines);
 
                 // Reload from disk
                 readerSupplier = ReaderSupplierFactory.open(indexPath);
                 graphIndex = OnDiskGraphIndex.load(readerSupplier);
 
                 indexDirty = false;
-                logger.info("JVectorIndex rebuilt successfully with " + compactVectors.size() + " vectors");
+                logger.info("JVectorIndex rebuilt successfully with " + indexedVectors.size() + " vectors");
             }
         } catch (Exception e) {
             logger.log(Level.SEVERE, "Failed to rebuild index", e);
@@ -376,7 +409,7 @@ public final class JVectorIndex implements VectorIndex {
     /**
      * Clean up graph index resources.
      */
-    private void cleanupGraphIndex() throws IOException {
+    private void cleanupGraphIndex() {
         if (readerSupplier != null) {
             try {
                 readerSupplier.close();
@@ -391,15 +424,16 @@ public final class JVectorIndex implements VectorIndex {
         return CompletableFuture.runAsync(() -> {
             indexLock.writeLock().lock();
             try {
-                // Clear in-memory vectors
-                vectors.clear();
+                vectorMap.clear();
+                internalToDatabaseOrdinal.clear();
+                databaseToInternalOrdinal.clear();
 
-                // Clear graph index
                 cleanupGraphIndex();
 
-                // Delete index file
                 Path indexPath = dataDir.resolve("vectors.idx");
+                Path mappingPath = dataDir.resolve("ordinals.map");
                 Files.deleteIfExists(indexPath);
+                Files.deleteIfExists(mappingPath);
 
                 indexDirty = false;
                 logger.info("Purged all vectors from JVectorIndex");
@@ -416,7 +450,7 @@ public final class JVectorIndex implements VectorIndex {
     public int size() {
         indexLock.readLock().lock();
         try {
-            return vectors.size();
+            return vectorMap.size();
         } finally {
             indexLock.readLock().unlock();
         }
@@ -435,7 +469,6 @@ public final class JVectorIndex implements VectorIndex {
     @Override
     public void shutdown() {
         try {
-            // Rebuild index if dirty before shutdown
             if (indexDirty) {
                 indexLock.writeLock().lock();
                 try {
@@ -445,7 +478,6 @@ public final class JVectorIndex implements VectorIndex {
                 }
             }
 
-            // Close graph index resources
             cleanupGraphIndex();
 
             logger.info("JVectorIndex shut down successfully");
@@ -457,9 +489,6 @@ public final class JVectorIndex implements VectorIndex {
 
     /**
      * Convert a float array to JVector's VectorFloat type.
-     *
-     * @param array float array to convert
-     * @return VectorFloat<?> representation
      */
     private VectorFloat<?> toVectorFloat(float[] array) {
         return io.github.jbellis.jvector.vector.VectorizationProvider

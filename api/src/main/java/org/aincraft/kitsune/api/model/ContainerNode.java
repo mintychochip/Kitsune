@@ -100,7 +100,7 @@ public class ContainerNode {
         return result;
     }
 
-    private void flattenWithPaths(List<ItemWithPath> result, List<NestedContainerRef> currentPath) {
+    private void flattenWithPaths(List<ItemWithPath> result, List<ContainerNode> currentPath) {
         // Add items at this level
         for (SerializedItem item : items) {
             result.add(new ItemWithPath(item, new ArrayList<>(currentPath)));
@@ -108,14 +108,8 @@ public class ContainerNode {
 
         // Recursively add items from children
         for (ContainerNode child : children) {
-            NestedContainerRef childRef = new NestedContainerRef(
-                child.getContainerType(),
-                child.getColor(),
-                child.getCustomName(),
-                child.getSlotIndex()
-            );
-            List<NestedContainerRef> childPath = new ArrayList<>(currentPath);
-            childPath.add(childRef);
+            List<ContainerNode> childPath = new ArrayList<>(currentPath);
+            childPath.add(child);
             child.flattenWithPaths(result, childPath);
         }
     }
@@ -125,9 +119,9 @@ public class ContainerNode {
      */
     public static class ItemWithPath {
         private final SerializedItem item;
-        private final List<NestedContainerRef> path;
+        private final List<ContainerNode> path;
 
-        public ItemWithPath(SerializedItem item, List<NestedContainerRef> path) {
+        public ItemWithPath(SerializedItem item, List<ContainerNode> path) {
             this.item = Objects.requireNonNull(item, "Item cannot be null");
             this.path = Collections.unmodifiableList(new ArrayList<>(Objects.requireNonNull(path, "Path cannot be null")));
         }
@@ -136,7 +130,7 @@ public class ContainerNode {
             return item;
         }
 
-        public List<NestedContainerRef> getPath() {
+        public List<ContainerNode> getPath() {
             return path;
         }
 

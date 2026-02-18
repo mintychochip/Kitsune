@@ -7,7 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.logging.Logger;
 import org.aincraft.kitsune.api.model.ContainerPath;
-import org.aincraft.kitsune.api.model.NestedContainerRef;
+import org.aincraft.kitsune.api.model.ContainerNode;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -172,7 +172,7 @@ public final class ItemDataExtractor {
 
     /**
      * Parse legacy container path string format.
-     * Splits by " → " and creates NestedContainerRef objects.
+     * Splits by " → " and creates ContainerNode objects.
      *
      * @param pathString legacy path string like "Red shulker_box → Bundle"
      * @return parsed ContainerPath
@@ -180,7 +180,7 @@ public final class ItemDataExtractor {
     private static ContainerPath parseLegacyContainerPath(String pathString) {
         // Split by " → " and create container refs
         String[] parts = pathString.split(" → ");
-        List<NestedContainerRef> refs = new ArrayList<>();
+        List<ContainerNode> refs = new ArrayList<>();
 
         for (int i = 0; i < parts.length; i++) {
             String part = parts[i].trim();
@@ -204,7 +204,7 @@ public final class ItemDataExtractor {
                 customName = part;
             }
 
-            refs.add(new NestedContainerRef(containerType, color, customName, i));
+            refs.add(new ContainerNode(containerType, color, customName, i, null, null));
         }
         return new ContainerPath(refs);
     }
@@ -251,11 +251,11 @@ public final class ItemDataExtractor {
             sb.append(" → ");
 
             // Format the container name nicely
-            String containerName = ref.customName();
+            String containerName = ref.getCustomName();
             if (containerName == null || containerName.isEmpty()) {
                 // Use type with color if available
-                String type = ref.containerType();
-                String color = ref.color();
+                String type = ref.getContainerType();
+                String color = ref.getColor();
 
                 if ("shulker_box".equals(type)) {
                     if (color != null && !color.isEmpty()) {

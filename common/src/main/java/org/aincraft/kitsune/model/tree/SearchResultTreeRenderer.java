@@ -6,14 +6,15 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.event.HoverEvent;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
+import org.aincraft.kitsune.Util;
 import org.aincraft.kitsune.api.model.ContainerPath;
-import org.aincraft.kitsune.api.model.NestedContainerRef;
+import org.aincraft.kitsune.api.model.ContainerNode;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * Platform-agnostic renderer for search result trees. Converts SearchResultTreeNode
- * hierarchies into Adventure Components for display in consoles, logs, or UI systems.
- *
+ * Platform-agnostic renderer for search result trees. Converts SearchResultTreeNode hierarchies
+ * into Adventure Components for display in consoles, logs, or UI systems.
+ * <p>
  * No Bukkit-specific dependencies. Uses text-based hover events and generic container labels.
  *
  * <p>Example output:
@@ -27,6 +28,7 @@ import org.jetbrains.annotations.Nullable;
  * </pre>
  */
 public final class SearchResultTreeRenderer {
+
   private static final String BRANCH = "\u251C\u2500 "; // ├─
   private static final String LAST_BRANCH = "\u2514\u2500 "; // └─
   private static final String VERTICAL = "\u2502  "; // │ + 2 spaces
@@ -58,7 +60,7 @@ public final class SearchResultTreeRenderer {
         // Format container type nicely (CHEST -> Chest, TRAPPED_CHEST -> Trapped Chest)
         String containerName = "Container";
         if (containerType != null && !containerType.isEmpty()) {
-          containerName = formatMaterialName(containerType);
+          containerName = Util.fromMaterialToTitleCase(containerType);
         }
 
         Component header =
@@ -92,10 +94,10 @@ public final class SearchResultTreeRenderer {
   /**
    * Recursively renders a node and its children.
    *
-   * @param node the node to render
+   * @param node   the node to render
    * @param prefix the prefix to prepend to this line
    * @param isLast whether this is the last child of its parent
-   * @param lines the output list of components to append to
+   * @param lines  the output list of components to append to
    */
   private void renderNode(
       SearchResultTreeNode node, String prefix, boolean isLast, List<Component> lines) {
@@ -134,13 +136,13 @@ public final class SearchResultTreeRenderer {
   /**
    * Builds the component for a container node.
    *
-   * @param node the container node
+   * @param node      the container node
    * @param connector the connector component (├─ or └─)
    * @return the complete component for the container
    */
   private Component buildContainerComponent(SearchResultTreeNode node, Component connector) {
 
-    NestedContainerRef ref = node.getContainerRef();
+    ContainerNode ref = node.getContainerRef();
     if (ref == null) {
       return connector.append(
           Component.text(node.getDisplayName(), NamedTextColor.AQUA)
@@ -169,7 +171,7 @@ public final class SearchResultTreeRenderer {
   /**
    * Builds the component for an item node.
    *
-   * @param node the item node
+   * @param node      the item node
    * @param connector the connector component (├─ or └─)
    * @return the complete component for the item
    */
@@ -210,9 +212,9 @@ public final class SearchResultTreeRenderer {
   }
 
   /**
-   * Builds the hover event for an item.
-   * If the live item context is available, uses its rich hover event (with enchantments, lore, etc.).
-   * Otherwise, falls back to text-based hover with item name, match percentage, and location details.
+   * Builds the hover event for an item. If the live item context is available, uses its rich hover
+   * event (with enchantments, lore, etc.). Otherwise, falls back to text-based hover with item
+   * name, match percentage, and location details.
    *
    * @param itemData the item data
    * @return the hover event
@@ -287,15 +289,15 @@ public final class SearchResultTreeRenderer {
     }
 
     StringBuilder sb = new StringBuilder("Chest");
-    for (NestedContainerRef ref : path.containerRefs()) {
+    for (ContainerNode ref : path.containerRefs()) {
       sb.append(" → ");
 
       // Format the container name nicely
-      String containerName = ref.customName();
+      String containerName = ref.getCustomName();
       if (containerName == null || containerName.isEmpty()) {
         // Use type with color if available
-        String type = ref.containerType();
-        String color = ref.color();
+        String type = ref.getContainerType();
+        String color = ref.getColor();
 
         if ("shulker_box".equals(type)) {
           if (color != null && !color.isEmpty()) {
@@ -314,7 +316,9 @@ public final class SearchResultTreeRenderer {
           String[] parts = type.split("_");
           StringBuilder typeSb = new StringBuilder();
           for (int i = 0; i < parts.length; i++) {
-            if (i > 0) typeSb.append(" ");
+            if (i > 0) {
+              typeSb.append(" ");
+            }
             String part = parts[i];
             if (!part.isEmpty()) {
               typeSb
@@ -331,28 +335,30 @@ public final class SearchResultTreeRenderer {
   }
 
   /**
-   * Formats a container name without the slot suffix. E.g., "Yellow Shulker Box" instead of
-   * "Yellow Shulker Box (slot 12)"
+   * Formats a container name without the slot suffix. E.g., "Yellow Shulker Box" instead of "Yellow
+   * Shulker Box (slot 12)"
    *
    * @param ref the nested container reference
    * @return the formatted component
    */
-  private Component formatContainerNameWithoutSlot(NestedContainerRef ref) {
+  private Component formatContainerNameWithoutSlot(ContainerNode ref) {
     StringBuilder sb = new StringBuilder();
 
     // Add color if present
-    if (ref.color() != null && !ref.color().isBlank()) {
-      String color = ref.color();
+    if (ref.getColor() != null && !ref.getColor().isBlank()) {
+      String color = ref.getColor();
       sb.append(Character.toUpperCase(color.charAt(0)))
           .append(color.substring(1).toLowerCase())
           .append(" ");
     }
 
     // Format container type: shulker_box -> Shulker Box
-    String type = ref.containerType();
+    String type = ref.getContainerType();
     String[] parts = type.split("_");
     for (int i = 0; i < parts.length; i++) {
-      if (i > 0) sb.append(" ");
+      if (i > 0) {
+        sb.append(" ");
+      }
       String part = parts[i];
       if (!part.isEmpty()) {
         sb.append(Character.toUpperCase(part.charAt(0)))
@@ -361,8 +367,8 @@ public final class SearchResultTreeRenderer {
     }
 
     // Add custom name if present
-    if (ref.customName() != null && !ref.customName().isBlank()) {
-      sb.append(" (\"").append(ref.customName()).append("\")");
+    if (ref.getCustomName() != null && !ref.getCustomName().isBlank()) {
+      sb.append(" (\"").append(ref.getCustomName()).append("\")");
     }
 
     return Component.text(sb.toString(), NamedTextColor.AQUA)
@@ -387,31 +393,5 @@ public final class SearchResultTreeRenderer {
     }
 
     return count;
-  }
-
-  /**
-   * Formats a material name from constant to human-readable format.
-   * Example: TRAPPED_CHEST -> Trapped Chest
-   *
-   * @param material the material constant (e.g., "TRAPPED_CHEST")
-   * @return formatted material name
-   */
-  private String formatMaterialName(String material) {
-    if (material == null || material.isEmpty()) {
-      return "Container";
-    }
-
-    // Convert TRAPPED_CHEST to Trapped Chest
-    String[] words = material.toLowerCase().split("_");
-    StringBuilder sb = new StringBuilder();
-    for (String word : words) {
-      if (!word.isEmpty()) {
-        if (sb.length() > 0) {
-          sb.append(" ");
-        }
-        sb.append(Character.toUpperCase(word.charAt(0))).append(word.substring(1));
-      }
-    }
-    return sb.toString();
   }
 }

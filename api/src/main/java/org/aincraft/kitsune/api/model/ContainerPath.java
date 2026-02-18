@@ -1,8 +1,10 @@
 package org.aincraft.kitsune.api.model;
 
 import com.google.common.base.Preconditions;
+import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -16,9 +18,9 @@ import org.jetbrains.annotations.Nullable;
  *
  * ROOT represents a top-level item (not in any container).
  *
- * Supports both rich NestedContainerRef format and legacy string format for backward compatibility.
+ * Supports both rich ContainerNode format and legacy string format for backward compatibility.
  */
-public record ContainerPath(List<NestedContainerRef> containerRefs) {
+public record ContainerPath(List<ContainerNode> containerRefs) {
     public static final ContainerPath ROOT = new ContainerPath(Collections.emptyList());
 
     public ContainerPath {
@@ -43,21 +45,21 @@ public record ContainerPath(List<NestedContainerRef> containerRefs) {
 
     /**
      * Appends a container reference to the path.
-     * @param ref the container reference to push
-     * @return a new ContainerPath with the ref appended
+     * @param node the container reference to push
+     * @return a new ContainerPath with the node appended
      */
-    public ContainerPath push(NestedContainerRef ref) {
-        Preconditions.checkNotNull(ref, "Container ref cannot be null");
-        List<NestedContainerRef> newPath = new ArrayList<>(containerRefs);
-        newPath.add(ref);
+    public ContainerPath push(ContainerNode node) {
+        Preconditions.checkNotNull(node, "Container node cannot be null");
+        List<ContainerNode> newPath = new ArrayList<>(containerRefs);
+        newPath.add(node);
         return new ContainerPath(newPath);
     }
 
     /**
-     * Returns the innermost container ref, or null if root.
+     * Returns the innermost container node, or null if root.
      */
     @Nullable
-    public NestedContainerRef getInnermost() {
+    public ContainerNode getInnermost() {
         return containerRefs.isEmpty() ? null : containerRefs.get(containerRefs.size() - 1);
     }
 
@@ -70,26 +72,70 @@ public record ContainerPath(List<NestedContainerRef> containerRefs) {
             return "";
         }
         StringBuilder sb = new StringBuilder();
-        for (NestedContainerRef ref : containerRefs) {
+        for (ContainerNode node : containerRefs) {
             if (sb.length() > 0) {
                 sb.append(" in ");
             } else {
                 sb.append("in ");
             }
-            sb.append(ref.toDisplayString());
+            sb.append(nodeToDisplayString(node));
         }
         return sb.toString();
     }
 
     /**
+     * Helper method to format a ContainerNode as a display string.
+     * Format: "Red Shulker Box (slot 12)".
+     */
+    private static String nodeToDisplayString(ContainerNode node) {
+        StringBuilder sb = new StringBuilder();
+
+        // Add color if present
+        if (node.getColor() != null && !node.getColor().isEmpty()) {
+            sb.append(capitalize(node.getColor())).append(" ");
+        }
+
+        // Add container type or custom name
+        if (node.getCustomName() != null && !node.getCustomName().isEmpty()) {
+            sb.append(node.getCustomName());
+        } else {
+            sb.append(formatContainerType(node.getContainerType()));
+        }
+
+        // Add slot info
+        sb.append(" (slot ").append(node.getSlotIndex()).append(")");
+
+        return sb.toString();
+    }
+
+    private static String capitalize(String s) {
+        if (s == null || s.isEmpty()) return s;
+        return Character.toUpperCase(s.charAt(0)) + s.substring(1).toLowerCase();
+    }
+
+    private static String formatContainerType(String type) {
+        if (type == null) return "Container";
+        return switch (type.toLowerCase()) {
+            case "shulker_box", "shulker" -> "Shulker Box";
+            case "bundle" -> "Bundle";
+            default -> capitalize(type.replace("_", " "));
+        };
+    }
+
+    /**
      * Serializes the path to JSON string.
-     * Format: [{ref1}, {ref2}] or "[]" for root.
-     * Uses new rich format with NestedContainerRef objects.
+     * Format: [{node1}, {node2}] or "[]" for root.
+     * Uses new rich format with ContainerNode objects.
      */
     public String toJson() {
         JsonArray arr = new JsonArray();
-        for (NestedContainerRef ref : containerRefs) {
-            arr.add(JsonParser.parseString(ref.toJson()));
+        for (ContainerNode node : containerRefs) {
+            JsonObject obj = new JsonObject();
+            obj.addProperty("containerType", node.getContainerType());
+            if (node.getColor() != null) obj.addProperty("color", node.getColor());
+            if (node.getCustomName() != null) obj.addProperty("customName", node.getCustomName());
+            obj.addProperty("slotIndex", node.getSlotIndex());
+            arr.add(obj);
         }
         return arr.toString();
     }
@@ -115,23 +161,28 @@ public record ContainerPath(List<NestedContainerRef> containerRefs) {
                 return ROOT;
             }
 
-            List<NestedContainerRef> refs = new ArrayList<>();
+            List<ContainerNode> nodes = new ArrayList<>();
             for (int i = 0; i < arr.size(); i++) {
                 JsonElement item = arr.get(i);
 
                 // Support both formats: legacy strings and new objects
                 if (item.isJsonPrimitive()) {
-                    // Legacy format: convert simple string to a NestedContainerRef
+                    // Legacy format: convert simple string to a ContainerNode
                     String name = item.getAsString();
-                    refs.add(new NestedContainerRef("container", null, name, i));
+                    nodes.add(new ContainerNode("container", null, name, i, null, null));
                 } else if (item.isJsonObject()) {
-                    // New format: parse as NestedContainerRef
-                    refs.add(NestedContainerRef.fromJson(item.toString()));
+                    // New format: parse as ContainerNode
+                    JsonObject obj = item.getAsJsonObject();
+                    String containerType = obj.has("containerType") ? obj.get("containerType").getAsString() : "container";
+                    String color = obj.has("color") ? obj.get("color").getAsString() : null;
+                    String customName = obj.has("customName") ? obj.get("customName").getAsString() : null;
+                    int slotIndex = obj.has("slotIndex") ? obj.get("slotIndex").getAsInt() : 0;
+                    nodes.add(new ContainerNode(containerType, color, customName, slotIndex, null, null));
                 } else {
                     throw new IllegalArgumentException("Expected string or object in container path array at index " + i);
                 }
             }
-            return new ContainerPath(refs);
+            return new ContainerPath(nodes);
         } catch (IllegalArgumentException e) {
             throw e;
         } catch (Exception e) {
@@ -151,10 +202,10 @@ public record ContainerPath(List<NestedContainerRef> containerRefs) {
         if (containerNames.isEmpty()) {
             return ROOT;
         }
-        List<NestedContainerRef> refs = new ArrayList<>();
+        List<ContainerNode> nodes = new ArrayList<>();
         for (int i = 0; i < containerNames.size(); i++) {
-            refs.add(new NestedContainerRef("container", null, containerNames.get(i), i));
+            nodes.add(new ContainerNode("container", null, containerNames.get(i), i, null, null));
         }
-        return new ContainerPath(refs);
+        return new ContainerPath(nodes);
     }
 }

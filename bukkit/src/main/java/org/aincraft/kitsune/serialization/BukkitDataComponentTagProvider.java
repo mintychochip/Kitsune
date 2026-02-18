@@ -2,10 +2,9 @@ package org.aincraft.kitsune.serialization;
 
 import org.aincraft.kitsune.Item;
 import org.aincraft.kitsune.api.serialization.TagProvider;
+import org.aincraft.kitsune.api.serialization.Tags;
 import io.papermc.paper.datacomponent.DataComponentTypes;
 import org.bukkit.inventory.ItemStack;
-
-import java.util.Collection;
 
 /**
  * Provides tags based on Bukkit/Paper DataComponents.
@@ -14,90 +13,80 @@ import java.util.Collection;
 public class BukkitDataComponentTagProvider implements TagProvider {
 
     @Override
-    public void appendTags(Collection<String> tags, Item item) {
+    public void appendTags(Tags tags, Item item) {
         ItemStack stack = item.unwrap(ItemStack.class);
 
         // Durability-related
         if (stack.hasData(DataComponentTypes.UNBREAKABLE)) {
-            tags.add("unbreakable");
-            tags.add("indestructible");
+            tags.push("unbreakable", "indestructible");
         }
 
         if (stack.hasData(DataComponentTypes.MAX_DAMAGE)) {
             int maxDamage = stack.getData(DataComponentTypes.MAX_DAMAGE);
             int damage = stack.getDataOrDefault(DataComponentTypes.DAMAGE, 0);
             if (damage > 0) {
-                tags.add("damaged");
+                tags.push("damaged");
                 double percent = (double) (maxDamage - damage) / maxDamage;
                 if (percent < 0.25) {
-                    tags.add("nearlybroke");
+                    tags.push("nearlybroke");
                 } else if (percent < 0.5) {
-                    tags.add("worn");
+                    tags.push("worn");
                 }
             } else {
-                tags.add("pristine");
+                tags.push("pristine");
             }
         }
 
         // Appearance
         if (stack.hasData(DataComponentTypes.DYED_COLOR)) {
-            tags.add("dyed");
-            tags.add("colored");
+            tags.push("dyed", "colored");
         }
 
         if (stack.hasData(DataComponentTypes.TRIM)) {
-            tags.add("trimmed");
-            tags.add("decorated");
+            tags.push("trimmed", "decorated");
         }
 
         if (stack.hasData(DataComponentTypes.CUSTOM_MODEL_DATA)) {
-            tags.add("custommodeldata");
-            tags.add("custom");
+            tags.push("custommodeldata", "custom");
         }
 
         // Rarity
         if (stack.hasData(DataComponentTypes.RARITY)) {
             var rarity = stack.getData(DataComponentTypes.RARITY);
             if (rarity != null) {
-                tags.add(rarity.name().toLowerCase());
+                tags.push(rarity.name().toLowerCase());
             }
         }
 
         // Container types
         if (stack.hasData(DataComponentTypes.BUNDLE_CONTENTS)) {
-            tags.add("bundle");
-            tags.add("container");
+            tags.push("bundle", "container");
         }
 
         if (stack.hasData(DataComponentTypes.CONTAINER)) {
-            tags.add("container");
+            tags.push("container");
             if (stack.getType().name().contains("SHULKER_BOX")) {
-                tags.add("shulker");
+                tags.push("shulker");
             }
         }
 
         // Charged/loaded weapons
         if (stack.hasData(DataComponentTypes.CHARGED_PROJECTILES)) {
-            tags.add("loaded");
-            tags.add("charged");
+            tags.push("loaded", "charged");
         }
 
         // Books
         if (stack.hasData(DataComponentTypes.WRITABLE_BOOK_CONTENT)) {
-            tags.add("book");
-            tags.add("writable");
+            tags.push("book", "writable");
         }
 
         if (stack.hasData(DataComponentTypes.WRITTEN_BOOK_CONTENT)) {
-            tags.add("book");
-            tags.add("signed");
-            tags.add("written");
+            tags.push("book", "signed", "written");
         }
 
         // Potions
         if (stack.hasData(DataComponentTypes.POTION_CONTENTS)) {
-            tags.add("potion");
-            tags.add("brewable");
+            tags.push("potion", "brewable");
         }
 
         // Food properties
@@ -105,15 +94,15 @@ public class BukkitDataComponentTagProvider implements TagProvider {
             var food = stack.getData(DataComponentTypes.FOOD);
             if (food != null) {
                 if (food.canAlwaysEat()) {
-                    tags.add("alwaysedible");
+                    tags.push("alwaysedible");
                 }
                 int nutrition = food.nutrition();
                 if (nutrition >= 8) {
-                    tags.add("veryfilling");
+                    tags.push("veryfilling");
                 } else if (nutrition >= 4) {
-                    tags.add("filling");
+                    tags.push("filling");
                 } else {
-                    tags.add("snack");
+                    tags.push("snack");
                 }
             }
         }
@@ -124,30 +113,28 @@ public class BukkitDataComponentTagProvider implements TagProvider {
             if (tool != null) {
                 float speed = tool.defaultMiningSpeed();
                 if (speed >= 12.0) {
-                    tags.add("veryfast");
+                    tags.push("veryfast");
                 } else if (speed >= 8.0) {
-                    tags.add("fast");
+                    tags.push("fast");
                 }
             }
         }
 
         // Music
         if (stack.getType().isRecord()) {
-            tags.add("musicdisc");
-            tags.add("record");
+            tags.push("musicdisc", "record");
         }
 
         // Gravity
         if (stack.getType().hasGravity()) {
-            tags.add("falling");
-            tags.add("gravity");
+            tags.push("falling", "gravity");
         }
 
         // Block/item distinction
         if (stack.getType().isBlock()) {
-            tags.add("block");
+            tags.push("block");
         } else {
-            tags.add("item");
+            tags.push("item");
         }
     }
 }

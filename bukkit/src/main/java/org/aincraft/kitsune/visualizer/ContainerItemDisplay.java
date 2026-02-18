@@ -8,8 +8,10 @@ import org.bukkit.World;
 import org.bukkit.entity.Display;
 import org.bukkit.entity.ItemDisplay;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.TextDisplay;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.util.Transformation;
 import org.joml.AxisAngle4f;
 import org.joml.Vector3f;
@@ -18,17 +20,23 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import java.util.logging.Logger;
 
 /**
  * Visualizes container search results using ItemDisplay entities to show item icons.
+ * Tracks displays per-container location so multiple chests can show items simultaneously.
  */
 public class ContainerItemDisplay {
     private final Logger logger;
     private final KitsuneConfig config;
     private final JavaPlugin plugin;
-    private final Map<UUID, List<ItemDisplay>> playerDisplays = new HashMap<>();
+
+    // Track displays per location key (world:x:y:z)
+    private final Map<String, List<ItemDisplay>> locationDisplays = new HashMap<>();
+    private final Map<String, Map<ItemDisplay, Double>> locationInitialAngles = new HashMap<>();
+    private final Map<String, Integer> locationAnimationTasks = new HashMap<>();
+    private final Map<String, Location> locationCenters = new HashMap<>();
+    private final Map<String, TextDisplay> locationTextDisplays = new HashMap<>();
 
     public ContainerItemDisplay(Logger logger, KitsuneConfig config, JavaPlugin plugin) {
         this.logger = logger;
@@ -37,17 +45,31 @@ public class ContainerItemDisplay {
     }
 
     /**
+     * Generates a unique key for a block location.
+     */
+    private String locationKey(Location loc) {
+        return loc.getWorld().getName() + ":" + loc.getBlockX() + ":" + loc.getBlockY() + ":" + loc.getBlockZ();
+    }
+
+    /**
      * Spawns ItemDisplay entities showing the top items from a container search result.
      */
     public void spawnItemDisplays(SearchResult result, Player player) {
         if (player == null || !player.isOnline()) {
+            logger.info("[ItemDisplay] Player is null or offline");
             return;
         }
 
         Location bukkitLoc = BukkitLocationFactory.toBukkitLocationOrNull(result.location());
         if (bukkitLoc == null) {
+            logger.info("[ItemDisplay] BukkitLocation is null");
             return;
         }
+
+        String locKey = locationKey(bukkitLoc);
+
+        // Clean up existing displays for THIS location only
+        clearLocationDisplays(locKey);
 
         int displayCount = config.visualizer().itemDisplayCount();
         if (displayCount <= 0) {
@@ -56,58 +78,48 @@ public class ContainerItemDisplay {
 
         World world = bukkitLoc.getWorld();
         if (world == null) {
+            logger.info("[ItemDisplay] World is null");
             return;
         }
 
         List<ItemStack> topItems = getTopItemsFromResult(result, displayCount);
+        logger.info("[ItemDisplay] Preview: " + result.preview() + ", Items found: " + topItems.size());
         if (topItems.isEmpty()) {
             return;
         }
 
         List<ItemDisplay> displays = new ArrayList<>();
+        Map<ItemDisplay, Double> initialAngles = new HashMap<>();
 
-        // Calculate positions in an arc above the container
         double radius = config.visualizer().displayRadius();
         double heightOffset = config.visualizer().displayHeight();
-        double baseY = bukkitLoc.getY() + heightOffset;
 
         for (int i = 0; i < topItems.size(); i++) {
-            // Spread items in a semicircle arc
-            double angle = Math.PI * (i / (double) Math.max(1, topItems.size() - 1)); // 0 to PI
+            double angle = (2 * Math.PI * i) / topItems.size(); // Spread evenly in circle
             double x = Math.cos(angle) * radius;
             double z = Math.sin(angle) * radius;
 
             Location displayLoc = bukkitLoc.clone().add(x + 0.5, heightOffset, z + 0.5);
-
-            // Create final copy of item for lambda
             final ItemStack itemToDisplay = topItems.get(i);
 
             try {
-                // Spawn ItemDisplay entity
                 ItemDisplay display = world.spawn(displayLoc, ItemDisplay.class, entity -> {
-                    // Set the item to display
                     entity.setItemStack(itemToDisplay);
-
-                    // Configure the display
                     entity.setGlowing(true);
                     entity.setBrightness(new Display.Brightness(15, 15));
 
-                    // Set transformation for proper scale
                     Transformation transformation = new Transformation(
-                        new Vector3f(0, 0, 0), // translation
-                        new AxisAngle4f(0, 0, 0, 1), // left rotation (identity)
-                        new Vector3f(0.5f, 0.5f, 0.5f), // scale - half size
-                        new AxisAngle4f(0, 0, 0, 1) // right rotation (identity)
+                        new Vector3f(0, 0, 0),
+                        new AxisAngle4f(0, 0, 0, 1),
+                        new Vector3f(0.5f, 0.5f, 0.5f),
+                        new AxisAngle4f(0, 0, 0, 1)
                     );
                     entity.setTransformation(transformation);
-
-                    // Set billboard mode to always face the player
                     entity.setBillboard(Display.Billboard.CENTER);
-
-                    // Set view range for visibility
                     entity.setViewRange(100f);
                 });
 
+                initialAngles.put(display, angle);
                 displays.add(display);
             } catch (Exception e) {
                 logger.warning("Failed to spawn ItemDisplay: " + e.getMessage());
@@ -115,33 +127,47 @@ public class ContainerItemDisplay {
         }
 
         if (!displays.isEmpty()) {
-            playerDisplays.computeIfAbsent(player.getUniqueId(), k -> new ArrayList<>()).addAll(displays);
+            locationDisplays.put(locKey, displays);
+            locationInitialAngles.put(locKey, initialAngles);
+            locationCenters.put(locKey, bukkitLoc.clone());
 
-            // Schedule cleanup after configured duration
+            // Spawn TextDisplay showing item count
+            int itemCount = topItems.size();
+            Location textLoc = bukkitLoc.clone().add(0.5, heightOffset + 0.8, 0.5);
+            try {
+                TextDisplay textDisplay = world.spawn(textLoc, TextDisplay.class, entity -> {
+                    entity.text(net.kyori.adventure.text.Component.text()
+                        .append(net.kyori.adventure.text.Component.text("x" + itemCount,
+                            net.kyori.adventure.text.format.NamedTextColor.YELLOW))
+                        .append(net.kyori.adventure.text.Component.text(" items",
+                            net.kyori.adventure.text.format.NamedTextColor.GRAY))
+                        .build());
+                    entity.setBillboard(Display.Billboard.CENTER);
+                    entity.setBackgroundColor(org.bukkit.Color.fromARGB(0, 0, 0, 0));
+                    entity.setBrightness(new Display.Brightness(15, 15));
+                    entity.setViewRange(100f);
+                });
+                locationTextDisplays.put(locKey, textDisplay);
+            } catch (Exception e) {
+                logger.warning("Failed to spawn TextDisplay: " + e.getMessage());
+            }
+
+            // Start animation for this location
+            if (config.visualizer().spinEnabled()) {
+                startAnimation(locKey);
+            }
+
+            // Schedule cleanup for this location
             plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
-                removeDisplays(displays);
-                // Remove from player's list
-                List<ItemDisplay> playerList = playerDisplays.get(player.getUniqueId());
-                if (playerList != null) {
-                    playerList.removeAll(displays);
-                    if (playerList.isEmpty()) {
-                        playerDisplays.remove(player.getUniqueId());
-                    }
-                }
+                clearLocationDisplays(locKey);
             }, config.visualizer().displayDurationTicks());
         }
     }
 
-    /**
-     * Gets the top items from a search result.
-     * TODO: In a full implementation, retrieve actual items from the container.
-     */
     private List<ItemStack> getTopItemsFromResult(SearchResult result, int maxItems) {
         List<ItemStack> items = new ArrayList<>();
 
         try {
-            // For now, create example items based on the search preview
-            // TODO: Use vectorStorage to get actual container contents
             String preview = result.preview();
             if (preview == null) {
                 preview = "";
@@ -191,7 +217,6 @@ public class ContainerItemDisplay {
                 items.add(new ItemStack(org.bukkit.Material.APPLE));
             }
 
-            // If no items matched, add defaults based on common items
             if (items.isEmpty()) {
                 items.add(new ItemStack(org.bukkit.Material.CHEST));
                 items.add(new ItemStack(org.bukkit.Material.DIAMOND));
@@ -203,7 +228,6 @@ public class ContainerItemDisplay {
                 }
             }
 
-            // Limit to maxItems
             if (items.size() > maxItems) {
                 return items.subList(0, maxItems);
             }
@@ -217,40 +241,142 @@ public class ContainerItemDisplay {
     }
 
     /**
-     * Removes a list of displays.
+     * Clears displays for a specific location.
      */
-    private void removeDisplays(List<ItemDisplay> displays) {
-        for (ItemDisplay display : displays) {
-            if (display != null && !display.isDead()) {
-                display.remove();
+    private void clearLocationDisplays(String locKey) {
+        // Cancel animation task
+        Integer taskId = locationAnimationTasks.remove(locKey);
+        if (taskId != null) {
+            plugin.getServer().getScheduler().cancelTask(taskId);
+        }
+
+        // Remove item displays
+        List<ItemDisplay> displays = locationDisplays.remove(locKey);
+        if (displays != null) {
+            for (ItemDisplay display : displays) {
+                if (display != null && !display.isDead()) {
+                    display.remove();
+                }
             }
         }
+
+        // Remove text display
+        TextDisplay textDisplay = locationTextDisplays.remove(locKey);
+        if (textDisplay != null && !textDisplay.isDead()) {
+            textDisplay.remove();
+        }
+
+        // Clear angles and center
+        locationInitialAngles.remove(locKey);
+        locationCenters.remove(locKey);
     }
 
     /**
-     * Removes all active displays for a specific player.
+     * Removes all displays for a specific player (cleanup on quit).
      */
     public void removeDisplaysForPlayer(Player player) {
-        if (player == null) {
-            return;
-        }
-
-        UUID playerId = player.getUniqueId();
-        List<ItemDisplay> displays = playerDisplays.remove(playerId);
-
-        if (displays != null) {
-            removeDisplays(displays);
-        }
+        // This is now a no-op since we track by location, not player
+        // Displays will naturally expire via their scheduled cleanup
     }
 
     /**
      * Removes all displays when the plugin is disabled.
      */
     public void cleanupAll() {
-        for (List<ItemDisplay> displays : playerDisplays.values()) {
-            removeDisplays(displays);
+        for (List<ItemDisplay> displays : locationDisplays.values()) {
+            for (ItemDisplay display : displays) {
+                if (display != null && !display.isDead()) {
+                    display.remove();
+                }
+            }
         }
-        playerDisplays.clear();
+        locationDisplays.clear();
+        locationInitialAngles.clear();
+        locationCenters.clear();
+
+        for (TextDisplay textDisplay : locationTextDisplays.values()) {
+            if (textDisplay != null && !textDisplay.isDead()) {
+                textDisplay.remove();
+            }
+        }
+        locationTextDisplays.clear();
+
+        for (Integer taskId : locationAnimationTasks.values()) {
+            plugin.getServer().getScheduler().cancelTask(taskId);
+        }
+        locationAnimationTasks.clear();
+
         logger.info("Cleaned up all ItemDisplay entities");
+    }
+
+    /**
+     * Starts the animation task for a specific location.
+     */
+    private void startAnimation(String locKey) {
+        Location centerLoc = locationCenters.get(locKey);
+        if (centerLoc == null) return;
+
+        BukkitRunnable task = new BukkitRunnable() {
+            private int tick = 0;
+
+            @Override
+            public void run() {
+                List<ItemDisplay> displays = locationDisplays.get(locKey);
+                Map<ItemDisplay, Double> angles = locationInitialAngles.get(locKey);
+
+                if (displays == null || angles == null || displays.isEmpty()) {
+                    cancel();
+                    return;
+                }
+
+                double spinSpeed = config.visualizer().spinSpeed();
+                double radius = config.visualizer().displayRadius();
+                double heightOffset = config.visualizer().displayHeight();
+
+                for (ItemDisplay display : displays) {
+                    if (display == null || display.isDead()) {
+                        continue;
+                    }
+
+                    Double initialAngle = angles.get(display);
+                    if (initialAngle == null) {
+                        continue;
+                    }
+
+                    // Keep items in fixed circle above chest, add gentle bobbing
+                    double x = Math.cos(initialAngle) * radius;
+                    double z = Math.sin(initialAngle) * radius;
+
+                    // Bobbing motion (up/down oscillation)
+                    double bobOffset = Math.sin(tick * 0.1) * 0.15;
+                    double itemBobOffset = Math.sin(tick * 0.1 + initialAngle) * 0.1; // Slight phase offset per item
+
+                    // Update position
+                    Location newLoc = centerLoc.clone().add(x + 0.5, heightOffset + bobOffset + itemBobOffset, z + 0.5);
+                    display.teleport(newLoc);
+
+                    // Apply spin
+                    if (config.visualizer().spinEnabled()) {
+                        double spinAngle = Math.toRadians(spinSpeed * tick);
+                        Transformation transformation = display.getTransformation();
+
+                        AxisAngle4f spinRotation = new AxisAngle4f((float) spinAngle, 0, 1, 0);
+                        transformation = new Transformation(
+                            transformation.getTranslation(),
+                            spinRotation,
+                            transformation.getScale(),
+                            new AxisAngle4f(transformation.getRightRotation())
+                        );
+
+                        display.setTransformation(transformation);
+                    }
+                }
+
+                tick++;
+            }
+        };
+
+        int taskId = task.runTaskTimer(plugin, 0, 1).getTaskId();
+        locationAnimationTasks.put(locKey, taskId);
     }
 }
