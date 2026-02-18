@@ -2,7 +2,8 @@ package org.aincraft.kitsune.model;
 
 import com.google.common.base.Preconditions;
 import java.util.List;
-import org.aincraft.kitsune.api.Location;
+import org.aincraft.kitsune.Location;
+import org.aincraft.kitsune.api.model.ContainerPath;
 import org.jetbrains.annotations.Nullable;
 
 /**

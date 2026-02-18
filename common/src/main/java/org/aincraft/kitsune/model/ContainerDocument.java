@@ -1,6 +1,6 @@
 package org.aincraft.kitsune.model;
 
-import org.aincraft.kitsune.api.Location;
+import org.aincraft.kitsune.Location;
 
 public record ContainerDocument(
     Location location,

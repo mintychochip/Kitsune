@@ -1,7 +1,7 @@
 package org.aincraft.kitsune.protection;
 
 import java.util.UUID;
-import org.aincraft.kitsune.api.Location;
+import org.aincraft.kitsune.Location;
 
 /**
  * Platform-agnostic interface for protection plugin integration.

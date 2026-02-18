@@ -6,7 +6,13 @@ plugins {
 
 version = rootProject.version
 
+repositories {
+    maven("https://repo.codemc.io/repository/maven-public/")
+    // maven("https://repo.oraxen.com/releases")
+}
 dependencies {
+    // compileOnly("io.th0rgal:oraxen:1.203.1")  // Version not found - commented out
+    compileOnly("org.popcraft:bolt-bukkit:1.1.52")
     implementation(project(":api"))
     implementation(project(":common"))
 
@@ -26,6 +32,10 @@ tasks.jar {
 
 tasks.runServer {
     minecraftVersion("1.21.11")
+
+    downloadPlugins {
+        modrinth("bolt", "1.1.52")
+    }
 }
 
 tasks.shadowJar {
@@ -36,6 +46,12 @@ tasks.shadowJar {
     // Merge service files
     mergeServiceFiles()
 
-    // Exclude DJL - loaded via Paper library loader
-    exclude("ai/djl/**")
+    // Exclude unused large dependencies
+    exclude("io/milvus/**")
+    exclude("io/grpc/**")
+    exclude("com/amazonaws/**")
+    exclude("com/azure/**")
+    exclude("org/apache/arrow/**")
+    exclude("org/apache/parquet/**")
+    exclude("shaded/parquet/**")
 }

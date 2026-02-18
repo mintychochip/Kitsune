@@ -1,8 +1,8 @@
 package org.aincraft.kitsune.listener;
 
 import org.aincraft.kitsune.api.ContainerLocations;
+import org.aincraft.kitsune.api.indexing.ContainerLocationResolver;
 import org.aincraft.kitsune.indexing.BukkitContainerIndexer;
-import org.aincraft.kitsune.util.ContainerLocationResolver;
 import org.bukkit.block.Block;
 import org.bukkit.block.Container;
 import org.bukkit.event.EventHandler;
@@ -47,7 +47,7 @@ public class ChestPlaceListener implements Listener {
             }
 
             // Get inventory holder - for double chest this will be DoubleChest
-            ContainerLocations locations = locationResolver.resolveLocations(container.getInventory().getHolder());
+            ContainerLocations locations = locationResolver.resolveFromInventoryHolder(container.getInventory().getHolder());
             if (locations == null) {
                 return;
             }

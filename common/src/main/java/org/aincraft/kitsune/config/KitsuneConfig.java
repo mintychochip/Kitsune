@@ -17,6 +17,7 @@ public class KitsuneConfig {
     private volatile CacheConfig cacheConfig;
     private volatile ThresholdConfig thresholdConfig;
     private volatile HistoryConfig historyConfig;
+    private volatile VisualizerConfig visualizerConfig;
 
     public KitsuneConfig(ConfigurationFactory configFactory) {
         this.config = configFactory.getConfiguration();
@@ -132,6 +133,20 @@ public class KitsuneConfig {
             }
         }
         return historyConfig;
+    }
+
+    /**
+     * Access visualizer configuration settings.
+     */
+    public VisualizerConfig visualizer() {
+        if (visualizerConfig == null) {
+            synchronized (this) {
+                if (visualizerConfig == null) {
+                    visualizerConfig = new VisualizerConfig(config);
+                }
+            }
+        }
+        return visualizerConfig;
     }
 
     /**
@@ -289,6 +304,56 @@ public class KitsuneConfig {
             return config.getString("storage.provider", "sqlite");
         }
 
+        /**
+         * Gets the vector index provider: "jvector" (local) or "milvus" (remote)
+         */
+        public String vectorProvider() {
+            return config.getString("storage.vector-provider", "jvector");
+        }
+
+        /**
+         * Gets the metadata storage provider: "sqlite", "postgresql", or "mysql"
+         */
+        public String metadataProvider() {
+            return config.getString("storage.metadata-provider", "sqlite");
+        }
+
+        // Remote database settings (for postgresql/mysql)
+
+        public String metadataHost() {
+            return config.getString("storage.metadata-host", "localhost");
+        }
+
+        public int metadataPort() {
+            return config.getInt("storage.metadata-port", 5432);
+        }
+
+        public String metadataDatabase() {
+            return config.getString("storage.metadata-database", "kitsune");
+        }
+
+        public String metadataUsername() {
+            return config.getString("storage.metadata-username", "");
+        }
+
+        public String metadataPassword() {
+            return config.getString("storage.metadata-password", "");
+        }
+
+        // Milvus settings
+
+        public String milvusHost() {
+            return config.getString("storage.milvus-host", "localhost");
+        }
+
+        public int milvusPort() {
+            return config.getInt("storage.milvus-port", 19530);
+        }
+
+        public String milvusCollection() {
+            return config.getString("storage.milvus-collection", "kitsune_vectors");
+        }
+
         public SqliteConfig sqlite() {
             if (sqliteConfig == null) {
                 synchronized (this) {
@@ -439,6 +504,57 @@ public class KitsuneConfig {
 
         public int retentionDays() {
             return config.getInt("history.retention-days", 30);
+        }
+    }
+
+    /**
+     * Visualizer configuration accessor.
+     */
+    public static class VisualizerConfig {
+        private final Configuration config;
+
+        VisualizerConfig(Configuration config) {
+            this.config = config;
+        }
+
+        /**
+         * Gets the number of items to display using ItemDisplay entities.
+         * Default is 6 if not configured.
+         */
+        public int itemDisplayCount() {
+            return config.getInt("visualizer.item-display-count", 6);
+        }
+
+        /**
+         * Gets the height above containers where ItemDisplay entities are spawned.
+         * Default is 2.0 blocks.
+         */
+        public double displayHeight() {
+            return config.getDouble("visualizer.display-height", 2.0);
+        }
+
+        /**
+         * Gets the radius of the arc where ItemDisplay entities are positioned.
+         * Default is 1.0 block.
+         */
+        public double displayRadius() {
+            return config.getDouble("visualizer.display-radius", 1.0);
+        }
+
+        /**
+         * Gets the duration in ticks that ItemDisplay entities should remain visible.
+         * Default is 200 ticks (10 seconds).
+         */
+        public int displayDurationTicks() {
+            return config.getInt("visualizer.display-duration-ticks", 200);
+        }
+
+        /**
+         * Whether to enable ItemDisplay visualization.
+         * Default is true.
+         */
+        public boolean itemDisplayEnabled() {
+            return config.getBoolean("visualizer.item-display-enabled", true);
         }
     }
 }

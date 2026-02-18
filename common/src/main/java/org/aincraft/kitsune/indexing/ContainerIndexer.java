@@ -1,11 +1,14 @@
 package org.aincraft.kitsune.indexing;
 
 import org.aincraft.kitsune.api.ContainerLocations;
-import org.aincraft.kitsune.api.Location;
+import org.aincraft.kitsune.Location;
+import org.aincraft.kitsune.api.indexing.SerializedItem;
+import org.aincraft.kitsune.api.model.ContainerPath;
 import org.aincraft.kitsune.config.KitsuneConfig;
 import org.aincraft.kitsune.embedding.EmbeddingService;
 import org.aincraft.kitsune.model.ContainerChunk;
-import org.aincraft.kitsune.storage.VectorStorage;
+import org.aincraft.kitsune.storage.KitsuneStorage;
+import org.aincraft.kitsune.util.ItemDataExtractor;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -28,21 +31,21 @@ import java.util.logging.Logger;
  * via the ContainerScanner interface.
  */
 public class ContainerIndexer {
-    private final Logger logger;
-    private final EmbeddingService embeddingService;
-    private final VectorStorage vectorStorage;
-    private final KitsuneConfig config;
+    protected final Logger logger;
+    protected final EmbeddingService embeddingService;
+    protected final KitsuneStorage storage;
+    protected final KitsuneConfig config;
     private final ScheduledExecutorService executor = Executors.newScheduledThreadPool(2);
     private final Map<Location, ScheduledFuture<?>> pendingIndexes = new HashMap<>();
     private final int debounceDelayMs;
 
     public ContainerIndexer(Logger logger, EmbeddingService embeddingService,
-                          VectorStorage vectorStorage, KitsuneConfig config) {
+                          KitsuneStorage storage, KitsuneConfig config) {
         this.logger = logger;
         this.embeddingService = embeddingService;
-        this.vectorStorage = vectorStorage;
+        this.storage = storage;
         this.config = config;
-        this.debounceDelayMs = config.getDebounceDelayMs();
+        this.debounceDelayMs = config.indexing().debounceDelayMs();
     }
 
     /**
@@ -56,7 +59,7 @@ public class ContainerIndexer {
         Location primaryLocation = locations.primaryLocation();
 
         // Get or create container (Phase 2-3 container management)
-        vectorStorage.getOrCreateContainer(locations).thenAccept(containerId -> {
+        storage.getOrCreateContainer(locations).thenAccept(containerId -> {
             synchronized (pendingIndexes) {
                 ScheduledFuture<?> existing = pendingIndexes.get(primaryLocation);
                 if (existing != null && !existing.isDone()) {
@@ -86,8 +89,13 @@ public class ContainerIndexer {
      * @param serializedItems the serialized items to index
      */
     protected void performIndex(java.util.UUID containerId, List<SerializedItem> serializedItems) {
+        // Find and remove the future from pendingIndexes to prevent memory leak
+        synchronized (pendingIndexes) {
+            pendingIndexes.values().removeIf(ScheduledFuture::isDone);
+        }
+
         if (serializedItems.isEmpty()) {
-            vectorStorage.deleteContainer(containerId).exceptionally(ex -> {
+            storage.deleteContainer(containerId).exceptionally(ex -> {
                 logger.log(Level.WARNING, "Failed to delete empty container", ex);
                 return null;
             });
@@ -105,19 +113,29 @@ public class ContainerIndexer {
             // Normalize to lowercase for better embedding consistency
             String embeddingText = serialized.embeddingText().toLowerCase();
 
-            // Log what we're embedding
-            logger.info("Indexing chunk " + chunkIndex + " for container " + containerId +
-                ": embedding=\"" + embeddingText + "\"");
+            // Log what we're embedding (DIAGNOSTIC: Full embedding text)
+            logger.info("=== DIAGNOSTIC: Chunk " + chunkIndex + " ===");
+            logger.info("Container: " + containerId);
+            logger.info("Embedding text: \"" + embeddingText + "\"");
+            logger.info("Embedding text length: " + embeddingText.length() + " chars, " + embeddingText.split("\\s+").length + " tokens");
 
-            // Embed the lowercase text, store original in content_text for display
+            // Extract container path from JSON
+            ContainerPath containerPath = ItemDataExtractor.extractContainerPath(serialized.storageJson(), logger);
+
+            // Embed the lowercase text, store JSON with display_name for retrieval
             CompletableFuture<ContainerChunk> chunkFuture = embeddingService.embed(embeddingText, "RETRIEVAL_DOCUMENT")
-                .thenApply(embedding -> new ContainerChunk(
-                    containerId,
-                    chunkIndex,
-                    embeddingText,  // Store lowercase text that was embedded
-                    embedding,
-                    timestamp
-                ));
+                .thenApply(embedding -> {
+                    // DIAGNOSTIC: Log embedding vector values
+                    logEmbeddingDiagnostics(chunkIndex, embeddingText, embedding);
+                    return new ContainerChunk(
+                        containerId,
+                        chunkIndex,
+                        serialized.storageJson(),  // Store JSON with display_name for display
+                        embedding,
+                        timestamp,
+                        containerPath  // Add this parameter
+                    );
+                });
 
             chunkFutures.add(chunkFuture);
         }
@@ -135,12 +153,104 @@ public class ContainerIndexer {
                 }
                 return chunks;
             })
-            .thenCompose(chunks -> vectorStorage.indexChunks(containerId, chunks))
+            .thenCompose(chunks -> storage.indexChunks(containerId, chunks))
             .exceptionally(ex -> {
                 logger.log(Level.WARNING, "Failed to index container " + containerId, ex);
                 return null;
             });
     }
+
+    /**
+     * Logs diagnostic information about embeddings to help identify issues.
+     * Logs the first 5 embedding vector values and overall statistics.
+     *
+     * @param chunkIndex index of the chunk being embedded
+     * @param embeddingText the text that was embedded
+     * @param embedding the resulting embedding vector
+     */
+    protected void logEmbeddingDiagnostics(int chunkIndex, String embeddingText, float[] embedding) {
+        if (embedding == null || embedding.length == 0) {
+            logger.warning("DIAGNOSTIC: Chunk " + chunkIndex + " has null or empty embedding!");
+            return;
+        }
+
+        // Log first 5 values
+        StringBuilder firstValues = new StringBuilder();
+        int limit = Math.min(5, embedding.length);
+        for (int i = 0; i < limit; i++) {
+            if (i > 0) firstValues.append(", ");
+            firstValues.append(String.format("%.6f", embedding[i]));
+        }
+        logger.info("First 5 embedding values: [" + firstValues + "]");
+
+        // Calculate and log embedding statistics
+        float min = embedding[0];
+        float max = embedding[0];
+        float sum = 0;
+        float sumSquares = 0;
+
+        for (float v : embedding) {
+            min = Math.min(min, v);
+            max = Math.max(max, v);
+            sum += v;
+            sumSquares += v * v;
+        }
+
+        float mean = sum / embedding.length;
+        float variance = (sumSquares / embedding.length) - (mean * mean);
+        float stdDev = (float) Math.sqrt(Math.max(0, variance));
+        float magnitude = (float) Math.sqrt(sumSquares);
+
+        logger.info("Embedding stats: dim=" + embedding.length +
+            ", min=" + String.format("%.6f", min) +
+            ", max=" + String.format("%.6f", max) +
+            ", mean=" + String.format("%.6f", mean) +
+            ", stdDev=" + String.format("%.6f", stdDev) +
+            ", magnitude=" + String.format("%.6f", magnitude));
+
+        // Compare with previous embedding if available
+        if (previousEmbeddingText != null && previousEmbedding != null) {
+            float similarity = calculateCosineSimilarity(embedding, previousEmbedding);
+            logger.info("Similarity to previous item: " + String.format("%.4f", similarity) +
+                " (prev: \"" + previousEmbeddingText + "\")");
+        }
+
+        // Store for next comparison
+        previousEmbeddingText = embeddingText;
+        previousEmbedding = embedding.clone();
+    }
+
+    /**
+     * Calculates cosine similarity between two embedding vectors.
+     */
+    protected float calculateCosineSimilarity(float[] vec1, float[] vec2) {
+        if (vec1.length != vec2.length) {
+            return 0;
+        }
+
+        float dotProduct = 0;
+        float mag1 = 0;
+        float mag2 = 0;
+
+        for (int i = 0; i < vec1.length; i++) {
+            dotProduct += vec1[i] * vec2[i];
+            mag1 += vec1[i] * vec1[i];
+            mag2 += vec2[i] * vec2[i];
+        }
+
+        mag1 = (float) Math.sqrt(mag1);
+        mag2 = (float) Math.sqrt(mag2);
+
+        if (mag1 == 0 || mag2 == 0) {
+            return 0;
+        }
+
+        return dotProduct / (mag1 * mag2);
+    }
+
+    // Storage for comparing consecutive embeddings
+    private String previousEmbeddingText = null;
+    private float[] previousEmbedding = null;
 
     public void shutdown() {
         synchronized (pendingIndexes) {

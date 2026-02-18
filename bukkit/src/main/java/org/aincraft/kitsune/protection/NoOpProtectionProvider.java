@@ -1,7 +1,7 @@
 package org.aincraft.kitsune.protection;
 
 import java.util.UUID;
-import org.aincraft.kitsune.api.Location;
+import org.aincraft.kitsune.Location;
 
 public class NoOpProtectionProvider implements ProtectionProvider {
     @Override

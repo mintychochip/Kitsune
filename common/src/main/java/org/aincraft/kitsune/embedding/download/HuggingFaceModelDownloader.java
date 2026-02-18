@@ -1,18 +1,17 @@
 package org.aincraft.kitsune.embedding.download;
 
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.Response;
-import okhttp3.ResponseBody;
-
 import java.io.*;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.file.*;
 import java.util.concurrent.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.time.Instant;
 
 /**
- * Downloads ONNX models and tokenizers from Hugging Face using OkHttp.
+ * Downloads ONNX models and tokenizers from Hugging Face using JDK HttpClient.
  * Implements retry logic with exponential backoff, streaming downloads,
  * and progress reporting.
  */
@@ -23,16 +22,16 @@ public class HuggingFaceModelDownloader {
     private static final int BUFFER_SIZE = 8192;
     private static final String TEMP_SUFFIX = ".downloading";
 
-    private final OkHttpClient httpClient;
+    private final HttpClient httpClient;
     private final Logger logger;
     private final int maxRetries;
-    private final ScheduledExecutorService executor;
+    private final ExecutorService executor;
 
-    public HuggingFaceModelDownloader(OkHttpClient httpClient, Logger logger, int maxRetries) {
+    public HuggingFaceModelDownloader(HttpClient httpClient, Logger logger, int maxRetries) {
         this.httpClient = httpClient;
         this.logger = logger;
         this.maxRetries = maxRetries;
-        this.executor = Executors.newScheduledThreadPool(2);
+        this.executor = Executors.newVirtualThreadPerTaskExecutor();
     }
 
     /**
@@ -111,6 +110,7 @@ public class HuggingFaceModelDownloader {
     /**
      * Implements retry logic with exponential backoff.
      * Delay = BASE_DELAY_MS * 2^attempt, capped at MAX_DELAY_MS.
+     * Virtual threads efficiently handle Thread.sleep() during backoff delays.
      */
     private CompletableFuture<Path> downloadWithRetry(
         String url,
@@ -140,20 +140,11 @@ public class HuggingFaceModelDownloader {
                     long delayMs = calculateBackoffDelay(nextAttempt);
                     logger.info("Retrying download of " + filename + " in " + delayMs + "ms (attempt " + (nextAttempt + 1) + ")");
 
-                    CompletableFuture<Path> delayed = new CompletableFuture<>();
-                    executor.schedule(
-                        () -> downloadWithRetry(url, destination, filename, listener, nextAttempt)
-                            .whenComplete((result, error) -> {
-                                if (error != null) {
-                                    delayed.completeExceptionally(error);
-                                } else {
-                                    delayed.complete(result);
-                                }
-                            }),
-                        delayMs,
-                        TimeUnit.MILLISECONDS
-                    );
-                    return delayed;
+                    // Use virtual thread for delay-then-retry, avoiding scheduled executor
+                    return CompletableFuture.supplyAsync(
+                        () -> sleepAndRetry(url, destination, filename, listener, nextAttempt, delayMs),
+                        executor
+                    ).thenCompose(future -> future);
                 });
         }
 
@@ -171,21 +162,34 @@ public class HuggingFaceModelDownloader {
                 logger.info("Retrying download of " + filename + " in " + delayMs + "ms (attempt " + (nextAttempt + 1) + ")");
                 listener.onError(filename, (Exception) ex);
 
-                CompletableFuture<Path> delayed = new CompletableFuture<>();
-                executor.schedule(
-                    () -> downloadWithRetry(url, destination, filename, listener, nextAttempt)
-                        .whenComplete((result, error) -> {
-                            if (error != null) {
-                                delayed.completeExceptionally(error);
-                            } else {
-                                delayed.complete(result);
-                            }
-                        }),
-                    delayMs,
-                    TimeUnit.MILLISECONDS
-                );
-                return delayed;
+                // Use virtual thread for delay-then-retry, avoiding scheduled executor
+                return CompletableFuture.supplyAsync(
+                    () -> sleepAndRetry(url, destination, filename, listener, nextAttempt, delayMs),
+                    executor
+                ).thenCompose(future -> future);
             });
+    }
+
+    /**
+     * Helper to sleep in a virtual thread, then retry download.
+     * Virtual threads handle blocking sleep efficiently without consuming platform threads.
+     */
+    private CompletableFuture<Path> sleepAndRetry(
+        String url,
+        Path destination,
+        String filename,
+        DownloadProgressListener listener,
+        int attempt,
+        long delayMs
+    ) {
+        try {
+            Thread.sleep(delayMs);
+        } catch (InterruptedException e) {
+            logger.log(Level.WARNING, "Sleep interrupted during backoff for " + filename, e);
+            Thread.currentThread().interrupt();
+            return CompletableFuture.failedFuture(e);
+        }
+        return downloadWithRetry(url, destination, filename, listener, attempt);
     }
 
     /**
@@ -202,55 +206,62 @@ public class HuggingFaceModelDownloader {
             Path tempFile = destination.resolveSibling(destination.getFileName() + TEMP_SUFFIX);
 
             try {
-                // Make HTTP request
-                Request request = new Request.Builder()
-                    .url(url)
+                // Build HTTP request
+                HttpRequest request = HttpRequest.newBuilder(java.net.URI.create(url))
+                    .GET()
                     .build();
 
-                try (Response response = httpClient.newCall(request).execute()) {
-                    if (!response.isSuccessful()) {
-                        throw new IOException("HTTP " + response.code() + " for " + url);
-                    }
+                // Send request and get response with InputStream body
+                HttpResponse<InputStream> response = httpClient.send(
+                    request,
+                    HttpResponse.BodyHandlers.ofInputStream()
+                );
 
-                    ResponseBody body = response.body();
-                    if (body == null) {
-                        throw new IOException("Empty response body");
-                    }
-
-                    long totalBytes = body.contentLength();
-
-                    // Notify listener of start
-                    listener.onStart(filename, totalBytes);
-
-                    // Stream to temp file
-                    long downloaded = 0;
-                    try (InputStream in = body.byteStream();
-                         OutputStream out = new FileOutputStream(tempFile.toFile())) {
-
-                        byte[] buffer = new byte[BUFFER_SIZE];
-                        int bytesRead;
-
-                        while ((bytesRead = in.read(buffer)) != -1) {
-                            out.write(buffer, 0, bytesRead);
-                            downloaded += bytesRead;
-
-                            // Calculate progress
-                            int percentComplete = totalBytes > 0
-                                ? (int) ((downloaded * 100) / totalBytes)
-                                : 0;
-
-                            listener.onProgress(filename, downloaded, totalBytes, percentComplete);
-                        }
-                    }
-
-                    // Atomic move from temp to destination
-                    Files.move(tempFile, destination, StandardCopyOption.REPLACE_EXISTING);
-
-                    logger.info("Successfully downloaded " + filename);
-                    listener.onComplete(filename);
-
-                    return destination;
+                if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                    throw new IOException("HTTP " + response.statusCode() + " for " + url);
                 }
+
+                InputStream body = response.body();
+                if (body == null) {
+                    throw new IOException("Empty response body");
+                }
+
+                // Get content-length from response headers
+                long totalBytes = response.headers()
+                    .firstValueAsLong("content-length")
+                    .orElse(-1L);
+
+                // Notify listener of start
+                listener.onStart(filename, totalBytes);
+
+                // Stream to temp file
+                long downloaded = 0;
+                try (InputStream in = body;
+                     OutputStream out = new FileOutputStream(tempFile.toFile())) {
+
+                    byte[] buffer = new byte[BUFFER_SIZE];
+                    int bytesRead;
+
+                    while ((bytesRead = in.read(buffer)) != -1) {
+                        out.write(buffer, 0, bytesRead);
+                        downloaded += bytesRead;
+
+                        // Calculate progress
+                        int percentComplete = totalBytes > 0
+                            ? (int) ((downloaded * 100) / totalBytes)
+                            : 0;
+
+                        listener.onProgress(filename, downloaded, totalBytes, percentComplete);
+                    }
+                }
+
+                // Atomic move from temp to destination
+                Files.move(tempFile, destination, StandardCopyOption.REPLACE_EXISTING);
+
+                logger.info("Successfully downloaded " + filename);
+                listener.onComplete(filename);
+
+                return destination;
             } catch (Exception e) {
                 // Clean up temp file on failure
                 try {

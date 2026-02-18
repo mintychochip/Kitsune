@@ -1,9 +1,9 @@
 package org.aincraft.kitsune.listener;
 
-import org.aincraft.kitsune.api.Location;
+import org.aincraft.kitsune.Location;
 import org.aincraft.kitsune.indexing.BukkitContainerIndexer;
-import org.aincraft.kitsune.storage.VectorStorage;
-import org.aincraft.kitsune.util.LocationConverter;
+import org.aincraft.kitsune.storage.KitsuneStorage;
+import org.aincraft.kitsune.util.BukkitLocationFactory;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.block.Container;
@@ -14,12 +14,12 @@ import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.plugin.Plugin;
 
 public class ContainerBreakListener implements Listener {
-    private final VectorStorage vectorStorage;
+    private final KitsuneStorage storage;
     private final BukkitContainerIndexer indexer;
     private final Plugin plugin;
 
-    public ContainerBreakListener(VectorStorage vectorStorage, BukkitContainerIndexer indexer, Plugin plugin) {
-        this.vectorStorage = vectorStorage;
+    public ContainerBreakListener(KitsuneStorage storage, BukkitContainerIndexer indexer, Plugin plugin) {
+        this.storage = storage;
         this.indexer = indexer;
         this.plugin = plugin;
     }
@@ -36,18 +36,18 @@ public class ContainerBreakListener implements Listener {
         Block otherHalf = findDoubleChestOtherHalf(brokenBlock);
 
         // Convert broken block location
-        Location brokenLocation = LocationConverter.toLocationData(brokenBlock.getLocation());
+        Location brokenLocation = BukkitLocationFactory.toLocationData(brokenBlock.getLocation());
 
         // Look up the primary location for this block (handles multi-block containers)
-        vectorStorage.getPrimaryLocation(brokenLocation)
+        storage.getPrimaryLocation(brokenLocation)
             .thenCompose(primaryOpt -> {
                 Location primaryLocation = primaryOpt.orElse(brokenLocation);
 
                 // Delete the container from the index
-                return vectorStorage.delete(primaryLocation)
+                return storage.delete(primaryLocation)
                     .thenCompose(unused -> {
                         // Clean up position mappings
-                        return vectorStorage.deleteContainerPositions(primaryLocation);
+                        return storage.deleteContainerPositions(primaryLocation);
                     });
             })
             .thenRun(() -> {

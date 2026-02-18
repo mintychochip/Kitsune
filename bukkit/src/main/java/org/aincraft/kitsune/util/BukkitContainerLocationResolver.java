@@ -1,7 +1,8 @@
 package org.aincraft.kitsune.util;
 
 import org.aincraft.kitsune.api.ContainerLocations;
-import org.aincraft.kitsune.api.Location;
+import org.aincraft.kitsune.Location;
+import org.aincraft.kitsune.api.indexing.ContainerLocationResolver;
 import org.bukkit.block.Block;
 import org.bukkit.block.Chest;
 import org.bukkit.block.Container;
@@ -17,8 +18,13 @@ public final class BukkitContainerLocationResolver implements ContainerLocationR
 
     @Override
     @Nullable
-    public ContainerLocations resolveLocations(InventoryHolder holder) {
-        if (holder == null) {
+    public ContainerLocations resolveFromInventoryHolder(Object inventoryHolder) {
+        if (inventoryHolder == null) {
+            return null;
+        }
+
+        // Cast to InventoryHolder
+        if (!(inventoryHolder instanceof InventoryHolder holder)) {
             return null;
         }
 
@@ -29,7 +35,7 @@ public final class BukkitContainerLocationResolver implements ContainerLocationR
 
         // Handle regular container blocks
         if (holder instanceof Container container) {
-            Location location = LocationConverter.toLocationData(container.getLocation());
+            Location location = BukkitLocationFactory.toLocationData(container.getLocation());
             return ContainerLocations.single(location);
         }
 
@@ -38,24 +44,29 @@ public final class BukkitContainerLocationResolver implements ContainerLocationR
 
     @Override
     @Nullable
-    public ContainerLocations resolveLocations(Block block) {
+    public ContainerLocations resolveFromBlock(Object block) {
         if (block == null) {
             return null;
         }
 
+        // Cast to Block
+        if (!(block instanceof Block bukkitBlock)) {
+            return null;
+        }
+
         // Check if the block state is a container
-        if (!(block.getState() instanceof Container)) {
+        if (!(bukkitBlock.getState() instanceof Container)) {
             return null;
         }
 
         // Try to get inventory holder through the block
-        InventoryHolder holder = (InventoryHolder) block.getState();
+        InventoryHolder holder = (InventoryHolder) bukkitBlock.getState();
         if (holder != null) {
-            return resolveLocations(holder);
+            return resolveFromInventoryHolder(holder);
         }
 
         // Fallback to single location
-        Location location = LocationConverter.toLocationData(block.getLocation());
+        Location location = BukkitLocationFactory.toLocationData(bukkitBlock.getLocation());
         return ContainerLocations.single(location);
     }
 
@@ -82,8 +93,8 @@ public final class BukkitContainerLocationResolver implements ContainerLocationR
         Chest leftChest = (Chest) leftHolder;
         Chest rightChest = (Chest) rightHolder;
 
-        Location leftLocation = LocationConverter.toLocationData(leftChest.getLocation());
-        Location rightLocation = LocationConverter.toLocationData(rightChest.getLocation());
+        Location leftLocation = BukkitLocationFactory.toLocationData(leftChest.getLocation());
+        Location rightLocation = BukkitLocationFactory.toLocationData(rightChest.getLocation());
 
         // Determine primary location: smaller X, then smaller Z (lexicographically)
         Location primaryLocation;

@@ -1,10 +1,14 @@
 package org.aincraft.kitsune.embedding;
 
+import org.aincraft.kitsune.Platform;
 import org.aincraft.kitsune.cache.EmbeddingCache;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -13,16 +17,19 @@ import java.util.concurrent.CompletableFuture;
  */
 public class CachedEmbeddingService implements EmbeddingService {
 
+    private final Platform platform;
     private final EmbeddingService delegate;
     private final EmbeddingCache cache;
 
     /**
      * Creates a cached embedding service.
      *
+     * @param platform The platform for logging
      * @param delegate The underlying embedding service
      * @param cache The cache to store embeddings
      */
-    public CachedEmbeddingService(EmbeddingService delegate, EmbeddingCache cache) {
+    public CachedEmbeddingService(Platform platform, EmbeddingService delegate, EmbeddingCache cache) {
+        this.platform = platform;
         this.delegate = delegate;
         this.cache = cache;
     }
@@ -39,14 +46,90 @@ public class CachedEmbeddingService implements EmbeddingService {
         return cache.get(cacheKey)
                 .thenCompose(cachedEmbedding -> {
                     if (cachedEmbedding.isPresent()) {
+                        platform.getLogger().info("Embedding cache hit for: " + text.substring(0, Math.min(50, text.length())) + "...");
                         return CompletableFuture.completedFuture(cachedEmbedding.get());
                     }
 
+                    platform.getLogger().info("Generating new embedding for: " + text.substring(0, Math.min(50, text.length())) + "...");
                     return delegate.embed(text, taskType)
                             .thenCompose(embedding ->
                                     cache.put(cacheKey, embedding)
                                             .thenApply(v -> embedding)
                             );
+                });
+    }
+
+    @Override
+    public CompletableFuture<List<float[]>> embedBatch(List<String> texts, String taskType) {
+        if (texts == null || texts.isEmpty()) {
+            return CompletableFuture.completedFuture(new ArrayList<>());
+        }
+
+        // Check cache for all texts first
+        List<String> cacheKeys = new ArrayList<>();
+        for (String text : texts) {
+            cacheKeys.add(hashText(text));
+        }
+
+        // Fetch cache entries for all texts
+        List<CompletableFuture<Optional<float[]>>> cacheFutures = new ArrayList<>();
+        for (String key : cacheKeys) {
+            cacheFutures.add(cache.get(key));
+        }
+
+        // Wait for all cache lookups to complete
+        return CompletableFuture.allOf(cacheFutures.toArray(new CompletableFuture[0]))
+                .thenCompose(v -> {
+                    // Separate hits and misses
+                    List<Integer> missIndices = new ArrayList<>();
+                    List<String> missTexts = new ArrayList<>();
+                    float[][] results = new float[texts.size()][];
+                    int cacheHits = 0;
+
+                    for (int i = 0; i < texts.size(); i++) {
+                        Optional<float[]> cached = cacheFutures.get(i).join();
+                        if (cached.isPresent()) {
+                            results[i] = cached.get();
+                            cacheHits++;
+                        } else {
+                            missIndices.add(i);
+                            missTexts.add(texts.get(i));
+                        }
+                    }
+
+                    platform.getLogger().info("Batch cache: " + cacheHits + " hits, " + missTexts.size() + " misses out of " + texts.size());
+
+                    // If all cached, return immediately
+                    if (missTexts.isEmpty()) {
+                        List<float[]> cachedResults = new ArrayList<>();
+                        for (float[] result : results) {
+                            cachedResults.add(result);
+                        }
+                        return CompletableFuture.completedFuture(cachedResults);
+                    }
+
+                    // Embed missing texts in batch
+                    return delegate.embedBatch(missTexts, taskType)
+                            .thenCompose(missedEmbeddings -> {
+                                // Store missing embeddings in cache
+                                List<CompletableFuture<Void>> putFutures = new ArrayList<>();
+                                for (int i = 0; i < missedEmbeddings.size(); i++) {
+                                    int originalIndex = missIndices.get(i);
+                                    float[] embedding = missedEmbeddings.get(i);
+                                    results[originalIndex] = embedding;
+                                    putFutures.add(cache.put(cacheKeys.get(originalIndex), embedding));
+                                }
+
+                                // Wait for all cache puts to complete, then return results
+                                return CompletableFuture.allOf(putFutures.toArray(new CompletableFuture[0]))
+                                        .thenApply(v2 -> {
+                                            List<float[]> finalResults = new ArrayList<>();
+                                            for (float[] result : results) {
+                                                finalResults.add(result);
+                                            }
+                                            return finalResults;
+                                        });
+                            });
                 });
     }
 
@@ -60,6 +143,16 @@ public class CachedEmbeddingService implements EmbeddingService {
     public void shutdown() {
         cache.shutdown();
         delegate.shutdown();
+    }
+
+    /**
+     * Clear all cached embeddings.
+     * Used by purge operations to reset the cache.
+     *
+     * @return CompletableFuture that completes when cache is cleared
+     */
+    public CompletableFuture<Void> clearCache() {
+        return cache.clear();
     }
 
     /**
@@ -90,5 +183,10 @@ public class CachedEmbeddingService implements EmbeddingService {
             sb.append(String.format("%02x", b));
         }
         return sb.toString();
+    }
+
+    @Override
+    public int getDimension() {
+        return delegate.getDimension();
     }
 }

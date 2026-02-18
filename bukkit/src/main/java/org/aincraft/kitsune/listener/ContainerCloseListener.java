@@ -1,8 +1,8 @@
 package org.aincraft.kitsune.listener;
 
 import org.aincraft.kitsune.api.ContainerLocations;
+import org.aincraft.kitsune.api.indexing.ContainerLocationResolver;
 import org.aincraft.kitsune.indexing.BukkitContainerIndexer;
-import org.aincraft.kitsune.util.ContainerLocationResolver;
 import org.bukkit.block.Container;
 import org.bukkit.block.DoubleChest;
 import org.bukkit.event.EventHandler;
@@ -29,7 +29,7 @@ public class ContainerCloseListener implements Listener {
         }
 
         // Resolve container locations (handles single and multi-block)
-        ContainerLocations locations = locationResolver.resolveLocations(holder);
+        ContainerLocations locations = locationResolver.resolveFromInventoryHolder(holder);
         if (locations == null) {
             return;
         }

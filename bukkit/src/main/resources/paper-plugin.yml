@@ -1,10 +1,9 @@
-name: KitsuneSS
+name: KitsuneSX
 version: 1.0-SNAPSHOT
 main: org.aincraft.kitsune.BukkitKitsuneMain
-bootstrapper: org.aincraft.kitsune.KitsuneBootstrap
 loader: org.aincraft.kitsune.KitsuneLoader
 api-version: "1.21"
-description: "Find chests using semantic search with vector embeddings"
+description: "Semantic search for containers"
 author: YourName
 website: "https://github.com/yourusername/kitsune"
 

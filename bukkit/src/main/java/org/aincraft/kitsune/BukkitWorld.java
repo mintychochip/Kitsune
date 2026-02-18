@@ -1,4 +1,14 @@
 package org.aincraft.kitsune;
 
-public class BukkitWorld {
+public record BukkitWorld(org.bukkit.World world) implements World {
+
+  @Override
+  public String getName() {
+    return world.getName();
+  }
+
+  @Override
+  public Block getBlock(int x, int y, int z) {
+    return new BukkitBlock(world.getBlockAt(x,y,z));
+  }
 }

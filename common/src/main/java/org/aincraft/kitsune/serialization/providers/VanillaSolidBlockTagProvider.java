@@ -1,0 +1,19 @@
+package org.aincraft.kitsune.serialization.providers;
+
+import java.util.Collection;
+import org.aincraft.kitsune.Item;
+import org.aincraft.kitsune.api.serialization.TagProvider;
+
+public class VanillaSolidBlockTagProvider implements TagProvider {
+
+  @Override
+  public void appendTags(Collection<String> tags, Item item) {
+    if (item.isSolid()) {
+      tags.add("solid");
+    }
+
+    if (item.isBlock()) {
+      tags.add("block");
+    }
+  }
+}

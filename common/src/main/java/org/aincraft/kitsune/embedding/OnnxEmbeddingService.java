@@ -5,47 +5,52 @@ import ai.djl.huggingface.tokenizers.HuggingFaceTokenizer;
 import ai.onnxruntime.OnnxTensor;
 import ai.onnxruntime.OrtEnvironment;
 import ai.onnxruntime.OrtSession;
-import java.net.http.HttpClient;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.logging.Level;
-import java.util.logging.Logger;
-import org.aincraft.kitsune.config.KitsuneConfig;
-import org.aincraft.kitsune.embedding.download.*;
-import org.aincraft.kitsune.KitsunePlatform;
+import org.aincraft.kitsune.Platform;
+import org.aincraft.kitsune.embedding.download.ConsoleProgressReporter;
+import org.aincraft.kitsune.embedding.download.DownloadProgressListener;
+import org.aincraft.kitsune.embedding.download.HuggingFaceModelDownloader;
+import org.aincraft.kitsune.embedding.download.ModelSpec;
+import org.aincraft.kitsune.embedding.download.ModelSpec.TaskPrefixStrategy;
 
+/**
+ * Unified ONNX embedding service that supports multiple models via ModelSpec.
+ * Handles model downloading, tokenizer loading, inference, and mean pooling.
+ * Uses virtual threads for ONNX inference (JDK 21+).
+ */
 public class OnnxEmbeddingService implements EmbeddingService {
-    private final Logger logger;
-    private final KitsunePlatform dataFolderProvider;
-    private final ScheduledExecutorService executor = Executors.newScheduledThreadPool(2);
+    private final Platform platform;
+    private final ModelSpec spec;
+    private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
+    private final boolean autoDownloadEnabled;
+
     private OrtEnvironment env;
     private OrtSession session;
     private HuggingFaceTokenizer tokenizer;
+    private HuggingFaceModelDownloader downloader;
 
-    private final String modelName;
-    private int embeddingDim;
+    // Constants for token sanitization
+    private static final long UNK_TOKEN_ID = 100;  // [UNK] token for BERT-based models
     private static final int MAX_SEQUENCE_LENGTH = 512;
 
-    private final KitsuneConfig config;
-    private final boolean autoDownloadEnabled;
-    private HttpClient httpClient;
-    private HuggingFaceModelDownloader downloader;
-    private ModelRegistry modelRegistry;
+    public OnnxEmbeddingService(Platform platform, ModelSpec spec) {
+        this(platform, spec, true);
+    }
 
-    public OnnxEmbeddingService(KitsuneConfig config, Logger logger, KitsunePlatform dataFolderProvider) {
-        this.logger = logger;
-        this.dataFolderProvider = dataFolderProvider;
-        this.config = config;
-        this.modelName = config.embedding().onnx().model();
-        this.embeddingDim = -1; // Will be set when model is resolved
-        this.autoDownloadEnabled = config.embedding().onnx().autoDownload();
-        this.modelRegistry = createModelRegistry();
+    public OnnxEmbeddingService(Platform platform, ModelSpec spec, boolean autoDownloadEnabled) {
+        this.platform = platform;
+        this.spec = spec;
+        this.autoDownloadEnabled = autoDownloadEnabled;
     }
 
     @Override
@@ -54,151 +59,103 @@ public class OnnxEmbeddingService implements EmbeddingService {
             .thenCompose(v -> doInitialize());
     }
 
-    private ModelRegistry createModelRegistry() {
-        Map<String, ModelSpec> models = new HashMap<>();
-
-        // Built-in ONNX models with their dimensions
-        models.put("nomic-embed-text-v1.5", new ModelSpec(
-            "nomic-embed-text-v1.5",
-            "nomic-ai/nomic-embed-text-v1.5",
-            "onnx/model.onnx",
-            "tokenizer.json",
-            768
-        ));
-        models.put("all-MiniLM-L6-v2", new ModelSpec(
-            "all-MiniLM-L6-v2",
-            "sentence-transformers/all-MiniLM-L6-v2",
-            "onnx/model.onnx",
-            "tokenizer.json",
-            384
-        ));
-        models.put("bge-m3", new ModelSpec(
-            "bge-m3",
-            "BAAI/bge-m3",
-            "onnx/model.onnx",
-            "tokenizer.json",
-            1024
-        ));
-
-        return new ModelRegistry(models);
-    }
-
     private CompletableFuture<Void> ensureModelAvailable() {
-        Path dataFolder = dataFolderProvider.getDataFolder();
-        Path modelsDir = dataFolder.resolve("models");
-        Path modelPath = modelsDir.resolve(modelName + ".onnx");
+        Path modelsDir = platform.getDataFolder().resolve("models");
+        Path modelPath = modelsDir.resolve(spec.getModelFileName());
         Path tokenizerPath = modelsDir.resolve("tokenizer.json");
 
-        // Always get model spec to set embeddingDim, even if files exist
-        ModelSpec spec = getModelSpec();
-        if (spec == null) {
-            return CompletableFuture.failedFuture(
-                new IllegalStateException("Unknown model: " + modelName + ". Configure repository in config."));
-        }
+        // Check if all required files exist
+        boolean modelExists = Files.exists(modelPath);
+        boolean tokenizerExists = Files.exists(tokenizerPath);
+        boolean dataExists = !spec.requiresExternalData() ||
+                             Files.exists(modelsDir.resolve("model.onnx_data"));
 
-        // If both files exist, skip download
-        if (Files.exists(modelPath) && Files.exists(tokenizerPath)) {
-            logger.info("ONNX model and tokenizer found locally");
+        if (modelExists && tokenizerExists && dataExists) {
+            platform.getLogger().info(spec.modelName() + " model files found locally");
             return CompletableFuture.completedFuture(null);
         }
 
-        // If auto-download disabled, fail
         if (!autoDownloadEnabled) {
-            logger.warning("Model files missing and auto-download is disabled");
             return CompletableFuture.failedFuture(
-                new IllegalStateException("ONNX model not found and auto-download is disabled"));
+                new IllegalStateException(spec.modelName() + " model not found and auto-download is disabled"));
         }
 
-        // Initialize downloader and download
-        logger.info("Model files missing, downloading from Hugging Face...");
+        // Download from Hugging Face
+        platform.getLogger().info("Downloading " + spec.modelName() + " from Hugging Face...");
         initializeDownloader();
-        DownloadProgressListener listener = new ConsoleProgressReporter(logger);
-        return downloader.downloadModel(spec, modelsDir, listener);
-    }
+        DownloadProgressListener listener = new ConsoleProgressReporter(platform.getLogger());
 
-    private ModelSpec getModelSpec() {
-        ModelSpec spec = null;
+        CompletableFuture<Void> downloadFuture = downloader.downloadModel(spec, modelsDir, listener);
 
-        // Check if custom repository is configured
-        String customRepo = config.embedding().onnx().repository();
-        if (customRepo != null && !customRepo.isEmpty()) {
-            String modelPath = config.embedding().onnx().modelPath();
-            String tokenizerPath = config.embedding().onnx().tokenizerPath();
-            if (modelPath.isEmpty()) modelPath = "onnx/model.onnx";
-            if (tokenizerPath.isEmpty()) tokenizerPath = "tokenizer.json";
-            // Default to 384 for custom models when dimension not configured
-            spec = ModelRegistry.fromCustomConfig(modelName, customRepo, modelPath, tokenizerPath, 384);
-        } else {
-            // Lookup from instance registry
-            spec = modelRegistry.getSpec(modelName).orElse(null);
+        // Also download external data file if needed
+        if (spec.requiresExternalData()) {
+            Path dataPath = modelsDir.resolve("model.onnx_data");
+            if (!Files.exists(dataPath)) {
+                downloadFuture = downloadFuture.thenCompose(v -> {
+                    platform.getLogger().info("Downloading external data file for " + spec.modelName() + "...");
+                    return downloader.downloadFile(spec.huggingFaceRepo(), "onnx/model.onnx_data", dataPath, listener);
+                }).thenRun(() -> {});
+            }
         }
 
-        // Set embedding dimension from the spec
-        if (spec != null) {
-            this.embeddingDim = spec.dimension();
-        }
-
-        return spec;
+        return downloadFuture;
     }
 
     private void initializeDownloader() {
-        httpClient = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(30))
-            .followRedirects(HttpClient.Redirect.NORMAL)
-            .build();
-        downloader = new HuggingFaceModelDownloader(httpClient, logger, config.embedding().onnx().downloadRetries());
+        var httpClient = HttpClientFactory.create();
+        downloader = new HuggingFaceModelDownloader(httpClient, platform.getLogger(), 3);
     }
 
     private CompletableFuture<Void> doInitialize() {
-        // Move the existing initialize() logic here (lines 41-84)
         return CompletableFuture.supplyAsync(() -> {
             try {
                 env = OrtEnvironment.getEnvironment();
-                Path dataFolder = dataFolderProvider.getDataFolder();
-                Path modelPath = dataFolder.resolve("models").resolve(modelName + ".onnx");
-                Path vocabPath = dataFolder.resolve("models").resolve("vocab.txt");
+                Path modelsDir = platform.getDataFolder().resolve("models");
+                Path modelPath = modelsDir.resolve(spec.getModelFileName());
 
                 if (!Files.exists(modelPath)) {
-                    logger.warning("ONNX model not found at " + modelPath);
-                    throw new IllegalStateException("ONNX model not found");
+                    throw new IllegalStateException("ONNX model not found at " + modelPath);
                 }
 
                 session = env.createSession(modelPath.toString());
+                loadTokenizer(modelsDir);
 
-                Path tokenizerJsonPath = dataFolder.resolve("models").resolve("tokenizer.json");
-
-                // Fix classloader context for DJL native library loading in plugin environments
-                // See: https://github.com/deepjavalibrary/djl/issues/2224
-                ClassLoader originalClassLoader = Thread.currentThread().getContextClassLoader();
-                try {
-                    Thread.currentThread().setContextClassLoader(getClass().getClassLoader());
-
-                    if (Files.exists(tokenizerJsonPath)) {
-                        tokenizer = HuggingFaceTokenizer.newInstance(tokenizerJsonPath);
-                        logger.info("Loaded tokenizer from tokenizer.json");
-                    } else if (Files.exists(vocabPath)) {
-                        Map<String, String> options = new HashMap<>();
-                        options.put("modelMaxLength", String.valueOf(MAX_SEQUENCE_LENGTH));
-                        options.put("addSpecialTokens", "true");
-                        options.put("padding", "false");
-                        options.put("truncation", "true");
-                        tokenizer = HuggingFaceTokenizer.newInstance(vocabPath, options);
-                        logger.info("Loaded tokenizer from vocab.txt");
-                    } else {
-                        logger.warning("No tokenizer found");
-                        throw new IllegalStateException("Tokenizer not found");
-                    }
-                } finally {
-                    Thread.currentThread().setContextClassLoader(originalClassLoader);
-                }
-
-                logger.info("ONNX embedding service initialized with " + modelName + " (" + embeddingDim + " dimensions)");
+                platform.getLogger().info("ONNX embedding service initialized with " + spec.modelName() +
+                           " (" + spec.dimension() + " dimensions, strategy: " + spec.taskPrefixStrategy() + ")");
                 return null;
             } catch (Exception e) {
-                logger.log(Level.SEVERE, "Failed to initialize ONNX session", e);
+                platform.getLogger().log(Level.SEVERE, "Failed to initialize ONNX session", e);
                 throw new RuntimeException("ONNX initialization failed", e);
             }
         }, executor);
+    }
+
+    private void loadTokenizer(Path modelsDir) throws Exception {
+        Path tokenizerJsonPath = modelsDir.resolve("tokenizer.json");
+        Path vocabPath = modelsDir.resolve("vocab.txt");
+
+        // Fix classloader context for DJL native library loading in plugin environments
+        ClassLoader originalClassLoader = Thread.currentThread().getContextClassLoader();
+        try {
+            Thread.currentThread().setContextClassLoader(getClass().getClassLoader());
+
+            if (Files.exists(tokenizerJsonPath)) {
+                tokenizer = HuggingFaceTokenizer.newInstance(tokenizerJsonPath);
+                platform.getLogger().fine("Loaded tokenizer from tokenizer.json");
+            } else if (Files.exists(vocabPath)) {
+                Map<String, String> options = new HashMap<>();
+                options.put("modelMaxLength", String.valueOf(MAX_SEQUENCE_LENGTH));
+                options.put("addSpecialTokens", "true");
+                options.put("padding", "false");
+                options.put("truncation", "true");
+                tokenizer = HuggingFaceTokenizer.newInstance(vocabPath, options);
+                platform.getLogger().fine("Loaded tokenizer from vocab.txt");
+            } else {
+                throw new IllegalStateException("No tokenizer found");
+            }
+        } finally {
+            Thread.currentThread().setContextClassLoader(originalClassLoader);
+        }
     }
 
     @Override
@@ -214,81 +171,169 @@ public class OnnxEmbeddingService implements EmbeddingService {
                     throw new IllegalStateException("ONNX session or tokenizer not initialized");
                 }
 
-                // Add task prefix for nomic models (required for proper embeddings)
-                String prefixedText = addTaskPrefix(text, taskType);
+                String processedText = spec.applyTaskPrefix(text, taskType);
+                Encoding encoding = tokenizer.encode(processedText);
 
-                // Tokenize text
-                Encoding encoding = tokenizer.encode(prefixedText);
-                long[] inputIds = encoding.getIds();
+                long[] inputIds = sanitizeTokenIds(encoding.getIds());
                 long[] attentionMask = encoding.getAttentionMask();
                 long[] tokenTypeIds = encoding.getTypeIds();
 
-                // Create tensors - batch size of 1
-                long[][] inputIdsTensor = new long[1][inputIds.length];
-                long[][] attentionMaskTensor = new long[1][attentionMask.length];
-                long[][] tokenTypeIdsTensor = new long[1][tokenTypeIds.length];
+                float[] embedding = runInference(
+                    new long[][]{inputIds},
+                    new long[][]{attentionMask},
+                    new long[][]{tokenTypeIds},
+                    attentionMask
+                );
 
-                inputIdsTensor[0] = inputIds;
-                attentionMaskTensor[0] = attentionMask;
-                tokenTypeIdsTensor[0] = tokenTypeIds;
-
-                Map<String, OnnxTensor> inputs = new HashMap<>();
-                OnnxTensor inputTensor = OnnxTensor.createTensor(env, inputIdsTensor);
-                OnnxTensor attentionTensor = OnnxTensor.createTensor(env, attentionMaskTensor);
-                OnnxTensor tokenTypeTensor = OnnxTensor.createTensor(env, tokenTypeIdsTensor);
-
-                inputs.put("input_ids", inputTensor);
-                inputs.put("attention_mask", attentionTensor);
-                inputs.put("token_type_ids", tokenTypeTensor);
-
-                try (var outputs = session.run(inputs)) {
-                    inputTensor.close();
-                    attentionTensor.close();
-                    tokenTypeTensor.close();
-
-                    if (outputs == null) {
-                        throw new RuntimeException("No output from ONNX model");
-                    }
-
-                    var lastHiddenStateOpt = outputs.get("last_hidden_state");
-                    if (lastHiddenStateOpt.isEmpty()) {
-                        throw new RuntimeException("No last_hidden_state in output");
-                    }
-
-                    OnnxTensor lastHiddenState = (OnnxTensor) lastHiddenStateOpt.get();
-                    float[] embedding = meanPooling((float[][][]) lastHiddenState.getValue(), attentionMask);
-
-                    return embedding;
-                }
+                return embedding;
             } catch (Exception e) {
-                logger.log(Level.WARNING, "Failed to embed text", e);
+                platform.getLogger().log(Level.WARNING, "Failed to embed text", e);
                 throw new RuntimeException("Embedding failed", e);
             }
         }, executor);
     }
 
-    private float[] meanPooling(float[][][] lastHiddenState, long[] attentionMask) {
-        float[] result = new float[embeddingDim];
+    @Override
+    public CompletableFuture<List<float[]>> embedBatch(List<String> texts, String taskType) {
+        if (texts == null || texts.isEmpty()) {
+            return CompletableFuture.completedFuture(Collections.emptyList());
+        }
+
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                if (session == null || tokenizer == null) {
+                    throw new IllegalStateException("ONNX session or tokenizer not initialized");
+                }
+
+                int batchSize = texts.size();
+                platform.getLogger().fine("Batch embedding " + batchSize + " texts");
+
+                // Tokenize all texts and find max length
+                List<Encoding> encodings = new ArrayList<>();
+                int maxLen = 0;
+                for (String text : texts) {
+                    String processed = spec.applyTaskPrefix(text, taskType);
+                    Encoding enc = tokenizer.encode(processed);
+                    encodings.add(enc);
+                    maxLen = Math.max(maxLen, enc.getIds().length);
+                }
+
+                // Create padded tensors
+                long[][] inputIdsTensor = new long[batchSize][maxLen];
+                long[][] attentionMaskTensor = new long[batchSize][maxLen];
+                long[][] tokenTypeIdsTensor = new long[batchSize][maxLen];
+
+                for (int i = 0; i < batchSize; i++) {
+                    Encoding enc = encodings.get(i);
+                    long[] ids = sanitizeTokenIds(enc.getIds());
+                    System.arraycopy(ids, 0, inputIdsTensor[i], 0, ids.length);
+                    System.arraycopy(enc.getAttentionMask(), 0, attentionMaskTensor[i], 0, enc.getAttentionMask().length);
+                    System.arraycopy(enc.getTypeIds(), 0, tokenTypeIdsTensor[i], 0, enc.getTypeIds().length);
+                }
+
+                // Run batch inference
+                List<float[]> results = runBatchInference(inputIdsTensor, attentionMaskTensor, tokenTypeIdsTensor);
+
+                platform.getLogger().fine("Batch embedding completed for " + batchSize + " texts");
+                return results;
+            } catch (Exception e) {
+                platform.getLogger().log(Level.WARNING, "Batch embedding failed", e);
+                throw new RuntimeException("Batch embedding failed", e);
+            }
+        }, executor);
+    }
+
+    private float[] runInference(long[][] inputIds, long[][] attentionMask,
+                                  long[][] tokenTypeIds, long[] attentionMaskFlat) throws Exception {
+        Map<String, OnnxTensor> inputs = createTensors(inputIds, attentionMask, tokenTypeIds);
+
+        try (var outputs = session.run(inputs)) {
+            closeTensors(inputs);
+
+            var lastHiddenStateOpt = outputs.get("last_hidden_state");
+            if (lastHiddenStateOpt.isEmpty()) {
+                throw new RuntimeException("No last_hidden_state in output");
+            }
+
+            OnnxTensor lastHiddenState = (OnnxTensor) lastHiddenStateOpt.get();
+            float[][][] output = (float[][][]) lastHiddenState.getValue();
+            return meanPooling(output[0], attentionMaskFlat);
+        }
+    }
+
+    private List<float[]> runBatchInference(long[][] inputIds, long[][] attentionMask,
+                                             long[][] tokenTypeIds) throws Exception {
+        Map<String, OnnxTensor> inputs = createTensors(inputIds, attentionMask, tokenTypeIds);
+
+        try (var outputs = session.run(inputs)) {
+            closeTensors(inputs);
+
+            var lastHiddenStateOpt = outputs.get("last_hidden_state");
+            if (lastHiddenStateOpt.isEmpty()) {
+                throw new RuntimeException("No last_hidden_state in output");
+            }
+
+            OnnxTensor lastHiddenState = (OnnxTensor) lastHiddenStateOpt.get();
+            float[][][] batchOutput = (float[][][]) lastHiddenState.getValue();
+
+            List<float[]> results = new ArrayList<>();
+            for (int i = 0; i < batchOutput.length; i++) {
+                results.add(meanPooling(batchOutput[i], attentionMask[i]));
+            }
+            return results;
+        }
+    }
+
+    private Map<String, OnnxTensor> createTensors(long[][] inputIds, long[][] attentionMask,
+                                                   long[][] tokenTypeIds) throws Exception {
+        Map<String, OnnxTensor> inputs = new HashMap<>();
+        inputs.put("input_ids", OnnxTensor.createTensor(env, inputIds));
+        inputs.put("attention_mask", OnnxTensor.createTensor(env, attentionMask));
+        inputs.put("token_type_ids", OnnxTensor.createTensor(env, tokenTypeIds));
+        return inputs;
+    }
+
+    private void closeTensors(Map<String, OnnxTensor> tensors) {
+        for (var tensor : tensors.values()) {
+            tensor.close();
+        }
+    }
+
+    private long[] sanitizeTokenIds(long[] inputIds) {
+        if (spec.vocabSize() <= 0) {
+            return inputIds; // Sanitization disabled
+        }
+
+        long[] sanitized = new long[inputIds.length];
+        for (int i = 0; i < inputIds.length; i++) {
+            if (inputIds[i] >= 0 && inputIds[i] < spec.vocabSize()) {
+                sanitized[i] = inputIds[i];
+            } else {
+                sanitized[i] = UNK_TOKEN_ID;
+            }
+        }
+        return sanitized;
+    }
+
+    private float[] meanPooling(float[][] lastHiddenState, long[] attentionMask) {
+        float[] result = new float[spec.dimension()];
         float sumMask = 0;
 
-        // Mean pooling weighted by attention mask
-        for (int i = 0; i < lastHiddenState[0].length && i < attentionMask.length; i++) {
+        for (int i = 0; i < lastHiddenState.length && i < attentionMask.length; i++) {
             if (attentionMask[i] == 1) {
-                for (int j = 0; j < embeddingDim && j < lastHiddenState[0][i].length; j++) {
-                    result[j] += lastHiddenState[0][i][j];
+                for (int j = 0; j < spec.dimension() && j < lastHiddenState[i].length; j++) {
+                    result[j] += lastHiddenState[i][j];
                 }
                 sumMask += 1.0f;
             }
         }
 
-        // Average
         if (sumMask > 0) {
-            for (int i = 0; i < embeddingDim; i++) {
+            for (int i = 0; i < result.length; i++) {
                 result[i] /= sumMask;
             }
         }
 
-        // L2 normalization
         normalizeEmbedding(result);
         return result;
     }
@@ -307,24 +352,9 @@ public class OnnxEmbeddingService implements EmbeddingService {
         }
     }
 
-    /**
-     * Adds task prefix required by nomic-embed-text models.
-     * See: https://huggingface.co/nomic-ai/nomic-embed-text-v1.5
-     */
-    private String addTaskPrefix(String text, String taskType) {
-        // Map internal task types to nomic prefixes
-        return switch (taskType) {
-            case "RETRIEVAL_QUERY" -> "search_query: " + text;
-            case "RETRIEVAL_DOCUMENT" -> "search_document: " + text;
-            case "CLUSTERING" -> "clustering: " + text;
-            case "CLASSIFICATION" -> "classification: " + text;
-            default -> "search_document: " + text;
-        };
-    }
-
     @Override
     public int getDimension() {
-        return embeddingDim;
+        return spec.dimension();
     }
 
     @Override
@@ -333,11 +363,8 @@ public class OnnxEmbeddingService implements EmbeddingService {
             downloader.shutdown();
         }
         if (session != null) {
-            try {
-                session.close();
-            } catch (Exception e) {
-                logger.log(Level.WARNING, "Failed to close ONNX session", e);
-            }
+            try { session.close(); }
+            catch (Exception e) { platform.getLogger().log(Level.WARNING, "Failed to close ONNX session", e); }
         }
         if (env != null) {
             env.close();

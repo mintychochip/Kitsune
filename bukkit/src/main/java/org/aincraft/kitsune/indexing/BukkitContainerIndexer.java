@@ -1,12 +1,14 @@
 package org.aincraft.kitsune.indexing;
 
 import org.aincraft.kitsune.api.ContainerLocations;
-import org.aincraft.kitsune.api.Location;
+import org.aincraft.kitsune.Location;
+import org.aincraft.kitsune.api.indexing.SerializedItem;
 import org.aincraft.kitsune.config.KitsuneConfig;
 import org.aincraft.kitsune.embedding.EmbeddingService;
 import java.util.logging.Logger;
-import org.aincraft.kitsune.storage.VectorStorage;
-import org.aincraft.kitsune.util.LocationConverter;
+import org.aincraft.kitsune.serialization.BukkitItemSerializer;
+import org.aincraft.kitsune.storage.KitsuneStorage;
+import org.aincraft.kitsune.util.BukkitLocationFactory;
 import org.bukkit.block.Container;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
@@ -24,10 +26,13 @@ import java.util.concurrent.TimeUnit;
  */
 public class BukkitContainerIndexer extends ContainerIndexer {
     private final ScheduledExecutorService executor = Executors.newScheduledThreadPool(2);
+    private final BukkitItemSerializer itemSerializer;
 
     public BukkitContainerIndexer(Logger logger, EmbeddingService embeddingService,
-                                   VectorStorage vectorStorage, KitsuneConfig config) {
-        super(logger, embeddingService, vectorStorage, config);
+                                   KitsuneStorage storage, KitsuneConfig config,
+                                   BukkitItemSerializer itemSerializer) {
+        super(logger, embeddingService, storage, config);
+        this.itemSerializer = itemSerializer;
     }
 
     /**
@@ -38,7 +43,7 @@ public class BukkitContainerIndexer extends ContainerIndexer {
      * @param items the Bukkit items to index
      */
     public void scheduleIndex(ContainerLocations locations, ItemStack[] items) {
-        List<SerializedItem> serializedItems = ItemSerializer.serializeItemsToChunks(items);
+        List<SerializedItem> serializedItems = itemSerializer.serializeItemsToChunks(items);
         scheduleIndex(locations, serializedItems);
     }
 
@@ -55,51 +60,63 @@ public class BukkitContainerIndexer extends ContainerIndexer {
             return;
         }
 
-        Location locationData = LocationConverter.toLocationData(location);
-        List<SerializedItem> serializedItems = ItemSerializer.serializeItemsToChunks(items);
+        Location locationData = BukkitLocationFactory.toLocationData(location);
+        List<SerializedItem> serializedItems = itemSerializer.serializeItemsToChunks(items);
         scheduleIndex(ContainerLocations.single(locationData), serializedItems);
     }
 
     /**
      * Performs radius-based reindexing of containers around a center location.
-     * Scans all blocks within radius and reindexes any containers found.
+     * Uses R-tree spatial index for O(log n) lookup instead of O(n^3) block iteration.
      *
      * @param center the center location
      * @param radius the scan radius
      * @return CompletableFuture with count of reindexed containers
      */
     public CompletableFuture<Integer> reindexRadius(org.bukkit.Location center, int radius) {
-        return CompletableFuture.supplyAsync(() -> {
-            if (center.getWorld() == null) {
-                return new ArrayList<CompletableFuture<?>>();
-            }
+        if (center.getWorld() == null) {
+            return CompletableFuture.completedFuture(0);
+        }
 
-            List<CompletableFuture<?>> scheduledTasks = new ArrayList<>();
-            int x = center.getBlockX();
-            int y = center.getBlockY();
-            int z = center.getBlockZ();
+        String worldName = center.getWorld().getName();
+        int x = center.getBlockX();
+        int y = center.getBlockY();
+        int z = center.getBlockZ();
 
-            for (int dx = -radius; dx <= radius; dx++) {
-                for (int dy = -radius; dy <= radius; dy++) {
-                    for (int dz = -radius; dz <= radius; dz++) {
-                        org.bukkit.Location loc = center.clone().add(dx, dy, dz);
-                        if (center.distance(loc) <= radius) {
-                            var block = loc.getBlock();
-                            if (block.getState() instanceof Container container) {
-                                Inventory inv = container.getInventory();
-                                scheduleIndexAndTrack(loc, inv.getContents(), scheduledTasks);
-                            }
-                        }
-                    }
+        // Use R-tree spatial index to find containers
+        return storage.getContainersInRadius(worldName, x, y, z, radius)
+            .thenCompose(containerIds -> {
+                if (containerIds.isEmpty()) {
+                    return CompletableFuture.completedFuture(0);
                 }
-            }
 
-            return scheduledTasks;
-        }, executor).thenCompose(scheduledTasks -> {
-            // Wait for all scheduled indexing tasks to complete
-            return CompletableFuture.allOf(scheduledTasks.toArray(new CompletableFuture[0]))
-                .thenApply(v -> scheduledTasks.size());
-        });
+                // For each container, get its location and reindex
+                List<CompletableFuture<?>> tasks = new ArrayList<>();
+
+                for (java.util.UUID containerId : containerIds) {
+                    CompletableFuture<?> task = storage.getPrimaryLocationForContainer(containerId)
+                        .thenAccept(locOpt -> {
+                            locOpt.ifPresent(loc -> {
+                                // Must get block on main thread
+                                org.bukkit.Location bukkitLoc = BukkitLocationFactory.toBukkitLocation(loc);
+                                if (bukkitLoc != null && bukkitLoc.getWorld() != null) {
+                                    // Verify still in radius (R-tree uses bounding box, need exact check)
+                                    if (center.distance(bukkitLoc) <= radius) {
+                                        var block = bukkitLoc.getBlock();
+                                        if (block.getState() instanceof Container container) {
+                                            Inventory inv = container.getInventory();
+                                            scheduleIndex(bukkitLoc, inv.getContents());
+                                        }
+                                    }
+                                }
+                            });
+                        });
+                    tasks.add(task);
+                }
+
+                return CompletableFuture.allOf(tasks.toArray(new CompletableFuture[0]))
+                    .thenApply(v -> containerIds.size());
+            });
     }
 
     /**
@@ -114,8 +131,8 @@ public class BukkitContainerIndexer extends ContainerIndexer {
             return;
         }
 
-        Location locationData = LocationConverter.toLocationData(location);
-        List<SerializedItem> serializedItems = ItemSerializer.serializeItemsToChunks(items);
+        Location locationData = BukkitLocationFactory.toLocationData(location);
+        List<SerializedItem> serializedItems = itemSerializer.serializeItemsToChunks(items);
 
         // Create a future that we'll complete when indexing is done
         CompletableFuture<Void> completionFuture = new CompletableFuture<>();

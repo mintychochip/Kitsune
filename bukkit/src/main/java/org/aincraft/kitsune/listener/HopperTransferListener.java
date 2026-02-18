@@ -1,8 +1,8 @@
 package org.aincraft.kitsune.listener;
 
 import org.aincraft.kitsune.api.ContainerLocations;
+import org.aincraft.kitsune.api.indexing.ContainerLocationResolver;
 import org.aincraft.kitsune.indexing.BukkitContainerIndexer;
-import org.aincraft.kitsune.util.ContainerLocationResolver;
 import org.bukkit.block.Container;
 import org.bukkit.block.DoubleChest;
 import org.bukkit.event.EventHandler;
@@ -33,7 +33,7 @@ public class HopperTransferListener implements Listener {
             // Handle source container (single or double chest)
             InventoryHolder sourceHolder = source.getHolder();
             if (sourceHolder instanceof Container || sourceHolder instanceof DoubleChest) {
-                ContainerLocations sourceLocations = locationResolver.resolveLocations(sourceHolder);
+                ContainerLocations sourceLocations = locationResolver.resolveFromInventoryHolder(sourceHolder);
                 if (sourceLocations != null) {
                     containerIndexer.scheduleIndex(sourceLocations, source.getContents());
                 }
@@ -42,7 +42,7 @@ public class HopperTransferListener implements Listener {
             // Handle destination container (single or double chest)
             InventoryHolder destHolder = destination.getHolder();
             if (destHolder instanceof Container || destHolder instanceof DoubleChest) {
-                ContainerLocations destLocations = locationResolver.resolveLocations(destHolder);
+                ContainerLocations destLocations = locationResolver.resolveFromInventoryHolder(destHolder);
                 if (destLocations != null) {
                     containerIndexer.scheduleIndex(destLocations, destination.getContents());
                 }

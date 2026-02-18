@@ -69,7 +69,7 @@ public class ProviderMetadata {
         try {
             Files.createDirectories(metadataPath.getParent());
             try (OutputStream out = Files.newOutputStream(metadataPath)) {
-                props.store(out, "ChestFind Embedding Provider Metadata - DO NOT EDIT");
+                props.store(out, "Kitsune Embedding Provider Metadata - DO NOT EDIT");
             }
             storedProvider = provider;
             storedModel = model;
@@ -134,7 +134,7 @@ public class ProviderMetadata {
         public String message() {
             return String.format(
                 "Embedding provider changed from %s/%s to %s/%s. " +
-                "Existing vectors are incompatible. Run '/chestfind purge' to clear old data.",
+                "Existing vectors are incompatible. Run '/kitsune purge' to clear old data.",
                 storedProvider, storedModel, currentProvider, currentModel
             );
         }

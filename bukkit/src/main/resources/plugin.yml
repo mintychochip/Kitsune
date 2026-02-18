@@ -1,4 +1,4 @@
-name: Kitsune
+name: KitsuneSX
 version: 1.0-SNAPSHOT
 main: org.aincraft.kitsune.KitsunePlugin
 api-version: 1.21

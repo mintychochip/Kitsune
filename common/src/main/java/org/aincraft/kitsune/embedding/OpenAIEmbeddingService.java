@@ -3,42 +3,40 @@ package org.aincraft.kitsune.embedding;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.logging.Level;
-import java.util.logging.Logger;
-import okhttp3.MediaType;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.RequestBody;
-import okhttp3.Response;
+import org.aincraft.kitsune.Platform;
 import org.aincraft.kitsune.config.KitsuneConfig;
 
 public class OpenAIEmbeddingService implements EmbeddingService {
-    private final Logger logger;
+    private final Platform platform;
     private final KitsuneConfig config;
-    private final OkHttpClient httpClient;
+    private final HttpClient httpClient;
     private final Gson gson = new Gson();
-    private final ScheduledExecutorService executor = Executors.newScheduledThreadPool(2);
     private static final String OPENAI_API_URL = "https://api.openai.com/v1/embeddings";
-    private static final MediaType JSON = MediaType.get("application/json; charset=utf-8");
 
-    public OpenAIEmbeddingService(Logger logger, KitsuneConfig config) {
-        this.logger = logger;
+    public OpenAIEmbeddingService(Platform platform, KitsuneConfig config) {
+        this.platform = platform;
         this.config = config;
-        this.httpClient = new OkHttpClient();
+        this.httpClient = HttpClient.newHttpClient();
     }
 
     @Override
     public CompletableFuture<Void> initialize() {
         return CompletableFuture.runAsync(() -> {
-            String apiKey = config.getOpenAIApiKey();
+            String apiKey = config.embedding().apiKey();
             if (apiKey == null || apiKey.isEmpty()) {
                 throw new IllegalStateException("OpenAI API key not configured");
             }
-            logger.info("OpenAI embedding service initialized with model: " + config.getOpenAIModel());
-        }, executor);
+            platform.getLogger().info("OpenAI embedding service initialized with model: " + config.embedding().model());
+        });
     }
 
     @Override
@@ -50,53 +48,128 @@ public class OpenAIEmbeddingService implements EmbeddingService {
     public CompletableFuture<float[]> embed(String text, String taskType) {
         return CompletableFuture.supplyAsync(() -> {
             try {
-                String apiKey = config.getOpenAIApiKey();
+                String apiKey = config.embedding().apiKey();
 
                 JsonObject body = new JsonObject();
                 body.addProperty("input", text);
-                body.addProperty("model", config.getOpenAIModel());
+                body.addProperty("model", config.embedding().model());
 
-                RequestBody requestBody = RequestBody.create(gson.toJson(body), JSON);
+                String jsonBody = gson.toJson(body);
 
-                Request request = new Request.Builder()
-                    .url(OPENAI_API_URL)
-                    .post(requestBody)
-                    .addHeader("Authorization", "Bearer " + apiKey)
+                HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(OPENAI_API_URL))
+                    .header("Content-Type", "application/json")
+                    .header("Authorization", "Bearer " + apiKey)
+                    .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
                     .build();
 
-                try (Response response = httpClient.newCall(request).execute()) {
-                    if (!response.isSuccessful()) {
-                        throw new RuntimeException("OpenAI API error: " + response.code() + " " + response.message());
-                    }
+                HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
-                    String responseBody = response.body().string();
-                    JsonObject responseJson = gson.fromJson(responseBody, JsonObject.class);
+                if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                    throw new RuntimeException("OpenAI API error: " + response.statusCode() + " " + response.body());
+                }
 
-                    JsonArray data = responseJson.getAsJsonArray("data");
-                    if (data == null || data.size() == 0) {
-                        throw new RuntimeException("No embedding data in response");
-                    }
+                JsonObject responseJson = gson.fromJson(response.body(), JsonObject.class);
 
-                    JsonObject embedding = data.get(0).getAsJsonObject();
+                JsonArray data = responseJson.getAsJsonArray("data");
+                if (data == null || data.size() == 0) {
+                    throw new RuntimeException("No embedding data in response");
+                }
+
+                JsonObject embedding = data.get(0).getAsJsonObject();
+                JsonArray embeddingArray = embedding.getAsJsonArray("embedding");
+
+                float[] result = new float[embeddingArray.size()];
+                for (int i = 0; i < embeddingArray.size(); i++) {
+                    result[i] = embeddingArray.get(i).getAsFloat();
+                }
+
+                return result;
+            } catch (Exception e) {
+                platform.getLogger().log(Level.WARNING, "Failed to embed text with OpenAI", e);
+                throw new RuntimeException("OpenAI embedding failed", e);
+            }
+        });
+    }
+
+    @Override
+    public CompletableFuture<List<float[]>> embedBatch(List<String> texts, String taskType) {
+        if (texts == null || texts.isEmpty()) {
+            return CompletableFuture.completedFuture(Collections.emptyList());
+        }
+
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                String apiKey = config.embedding().apiKey();
+                int batchSize = texts.size();
+                platform.getLogger().info("Starting batch embedding for " + batchSize + " texts with OpenAI");
+
+                // Build batch request - OpenAI API accepts array of strings
+                JsonObject body = new JsonObject();
+                JsonArray inputArray = new JsonArray();
+                for (String text : texts) {
+                    inputArray.add(text);
+                }
+                body.add("input", inputArray);
+                body.addProperty("model", config.embedding().model());
+
+                String jsonBody = gson.toJson(body);
+
+                HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(OPENAI_API_URL))
+                    .header("Content-Type", "application/json")
+                    .header("Authorization", "Bearer " + apiKey)
+                    .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
+                    .build();
+
+                HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+                if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                    throw new RuntimeException("OpenAI API error: " + response.statusCode() + " " + response.body());
+                }
+
+                JsonObject responseJson = gson.fromJson(response.body(), JsonObject.class);
+
+                JsonArray data = responseJson.getAsJsonArray("data");
+                if (data == null || data.size() == 0) {
+                    throw new RuntimeException("No embedding data in response");
+                }
+
+                // Results come in the same order as input
+                List<float[]> results = new ArrayList<>();
+                for (int i = 0; i < data.size(); i++) {
+                    JsonObject embedding = data.get(i).getAsJsonObject();
                     JsonArray embeddingArray = embedding.getAsJsonArray("embedding");
 
                     float[] result = new float[embeddingArray.size()];
-                    for (int i = 0; i < embeddingArray.size(); i++) {
-                        result[i] = embeddingArray.get(i).getAsFloat();
+                    for (int j = 0; j < embeddingArray.size(); j++) {
+                        result[j] = embeddingArray.get(j).getAsFloat();
                     }
-
-                    return result;
+                    results.add(result);
                 }
+
+                platform.getLogger().info("Batch embedding completed for " + batchSize + " texts");
+                return results;
             } catch (Exception e) {
-                logger.log(Level.WARNING, "Failed to embed text with OpenAI", e);
-                throw new RuntimeException("OpenAI embedding failed", e);
+                platform.getLogger().log(Level.WARNING, "Batch embedding failed with OpenAI", e);
+                throw new RuntimeException("Batch embedding failed", e);
             }
-        }, executor);
+        });
+    }
+
+    @Override
+    public int getDimension() {
+        String model = config.embedding().model();
+        return switch (model) {
+            case "text-embedding-3-large" -> 3072;
+            case "text-embedding-3-small" -> 1536;
+            case "text-embedding-ada-002" -> 1536;
+            default -> 1536; // Default to text-embedding-3-small dimensions
+        };
     }
 
     @Override
     public void shutdown() {
-        httpClient.dispatcher().executorService().shutdown();
-        executor.shutdown();
+        // JDK HttpClient uses daemon threads by default - no explicit shutdown needed
     }
 }

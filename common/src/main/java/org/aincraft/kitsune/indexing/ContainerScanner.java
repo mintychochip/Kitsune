@@ -1,6 +1,6 @@
 package org.aincraft.kitsune.indexing;
 
-import org.aincraft.kitsune.api.Location;
+import org.aincraft.kitsune.Location;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 

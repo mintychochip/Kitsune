@@ -1,8 +1,8 @@
 package org.aincraft.kitsune.protection;
 
 import java.util.UUID;
-import org.aincraft.kitsune.api.Location;
-import org.aincraft.kitsune.util.LocationConverter;
+import org.aincraft.kitsune.Location;
+import org.aincraft.kitsune.util.BukkitLocationFactory;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 
@@ -21,7 +21,7 @@ public abstract class BukkitProtectionProvider
             return false;
         }
 
-        org.bukkit.Location bukkitLocation = LocationConverter.toBukkitLocation(location);
+        org.bukkit.Location bukkitLocation = BukkitLocationFactory.toBukkitLocationOrNull(location);
         if (bukkitLocation == null) {
             // World not loaded - allow access by default
             return true;

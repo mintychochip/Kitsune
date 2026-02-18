@@ -1,4 +1,4 @@
-package org.aincraft.kitsune.api.serialization;
+package org.aincraft.kitsune;
 
 import java.util.List;
 import java.util.Map;
