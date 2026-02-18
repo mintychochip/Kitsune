@@ -7,42 +7,42 @@ import java.util.concurrent.CompletableFuture;
 
 /**
  * Cache for item embeddings.
- * Keys are content hash codes from ItemContext.contentHash().
+ * Keys are long hash codes (combines hashCode + length for uniqueness).
  * Values are embedding vectors.
  */
 public interface EmbeddingCache {
     /**
-     * Get cached embedding for an item hash.
+     * Get cached embedding for a hash key.
      *
-     * @param contentHash The content hash from ItemContext.contentHash()
+     * @param key The content hash key
      * @return The cached embedding, or empty if not cached
      */
-    CompletableFuture<Optional<float[]>> get(String contentHash);
+    CompletableFuture<Optional<float[]>> get(long key);
 
     /**
      * Get multiple cached embeddings.
-     * Returns map of hash -> embedding for found entries only.
+     * Returns map of key -> embedding for found entries only.
      *
-     * @param contentHashes The content hashes to look up
+     * @param keys The keys to look up
      * @return Map of found embeddings (missing entries excluded)
      */
-    CompletableFuture<Map<String, float[]>> getAll(List<String> contentHashes);
+    CompletableFuture<Map<Long, float[]>> getAll(List<Long> keys);
 
     /**
-     * Store embedding for an item hash.
+     * Store embedding for a hash key.
      *
-     * @param contentHash The content hash from ItemContext.contentHash()
+     * @param key The content hash key
      * @param embedding The embedding vector to cache
      */
-    CompletableFuture<Void> put(String contentHash, float[] embedding);
+    CompletableFuture<Void> put(long key, float[] embedding);
 
     /**
      * Store multiple embeddings.
      * More efficient than individual puts for bulk operations.
      *
-     * @param embeddings Map of content hash to embedding
+     * @param embeddings Map of key to embedding
      */
-    CompletableFuture<Void> putAll(Map<String, float[]> embeddings);
+    CompletableFuture<Void> putAll(Map<Long, float[]> embeddings);
 
     /**
      * Flush any pending writes (for write-behind implementations).

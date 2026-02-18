@@ -128,7 +128,7 @@ public final class JVectorIndex implements VectorIndex {
                     }
                 }
 
-                long validVectorCount = vectors.stream().filter(v -> v != null).count();
+                long validVectorCount = vectors.size();
                 logger.info("Loaded " + validVectorCount + " vectors from JVectorIndex graph");
             } catch (Exception e) {
                 logger.warning("Failed to load existing index, will rebuild: " + e.getMessage());
@@ -237,7 +237,7 @@ public final class JVectorIndex implements VectorIndex {
                             ? allowedOrdinals::contains
                             : Bits.ALL;
 
-                    int searchLimit = Math.min(limit * 10, (int) vectors.stream().filter(v -> v != null).count());
+                    int searchLimit = Math.min(limit * 10, vectors.size());
                     SearchResult sr = searcher.search(ssp, searchLimit, filterBits);
 
                     // Convert search results to VectorSearchResult

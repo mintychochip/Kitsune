@@ -28,38 +28,31 @@ import javax.sql.DataSource;
 
 /**
  * Two-tier embedding cache with Caffeine L1 (in-memory) + SQLite L2 (persistent).
- * Uses shared DataSource from ContainerStorage.
- *
- * Optimizations:
- * - ByteBuffer pooling to reduce GC pressure
- * - Write-behind buffer with batch flushing
- * - Batch operations for bulk efficiency
- *
- * Note: Connections are acquired per-operation and released back to the pool
- * to avoid exhausting the shared HikariCP pool.
+ * Uses long keys for zero-allocation cache lookups.
  */
 public final class LayeredEmbeddingCache implements EmbeddingCache {
     private static final int DEFAULT_MAX_L1_SIZE = 10000;
-    private static final int BUFFER_POOL_SIZE = 16;
-    private static final int INITIAL_BUFFER_CAPACITY = 4096; // 1024 floats
+    private static final int BUFFER_POOL_SIZE = 32;
+    private static final int INITIAL_BUFFER_CAPACITY = 4096;
     private static final int WRITE_BEHIND_BATCH_SIZE = 100;
-    private static final long WRITE_BEHIND_FLUSH_MS = 1000; // 1 second
+    private static final int MAX_WRITE_BUFFER_SIZE = 1000;
+    private static final long WRITE_BEHIND_FLUSH_MS = 1000;
+    private static final int MAX_EXECUTOR_THREADS = Math.min(4, Runtime.getRuntime().availableProcessors());
 
     private final Logger logger;
     private final DataSource dataSource;
-    private final com.github.benmanes.caffeine.cache.Cache<String, float[]> l1Cache;
+    private final com.github.benmanes.caffeine.cache.Cache<Long, float[]> l1Cache;
     private final ExecutorService executor;
     private final ScheduledExecutorService scheduler;
-
-    private final Deque<ByteBuffer> bufferPool = new ArrayDeque<>(BUFFER_POOL_SIZE);
+    private final Deque<ByteBuffer> bufferPool = new ConcurrentLinkedDeque<>();
 
     // Write-behind buffer
     private final ConcurrentLinkedQueue<WriteEntry> writeBuffer = new ConcurrentLinkedQueue<>();
     private final AtomicInteger writeBufferSize = new AtomicInteger(0);
     private final AtomicBoolean flushPending = new AtomicBoolean(false);
-    private final AtomicBoolean shutdownRequested = new AtomicBoolean(false);
+    private final AtomicBoolean isShuttingDown = new AtomicBoolean(false);
 
-    private record WriteEntry(String hash, byte[] data, long timestamp) {}
+    private record WriteEntry(long key, byte[] data, long timestamp) {}
 
     public LayeredEmbeddingCache(DataSource dataSource, Logger logger) {
         this(dataSource, logger, DEFAULT_MAX_L1_SIZE);
@@ -71,8 +64,8 @@ public final class LayeredEmbeddingCache implements EmbeddingCache {
         this.l1Cache = Caffeine.newBuilder()
             .maximumSize(maxL1Size)
             .build();
-        this.executor = Executors.newSingleThreadExecutor(r -> {
-            Thread t = new Thread(r, "embedding-cache-executor");
+        this.executor = Executors.newFixedThreadPool(MAX_EXECUTOR_THREADS, r -> {
+            Thread t = new Thread(r, "embedding-cache-executor-" + r.hashCode());
             t.setDaemon(true);
             return t;
         });
@@ -96,7 +89,7 @@ public final class LayeredEmbeddingCache implements EmbeddingCache {
         try (Connection conn = dataSource.getConnection()) {
             conn.createStatement().execute("""
                 CREATE TABLE IF NOT EXISTS embedding_cache (
-                    content_hash TEXT PRIMARY KEY,
+                    content_hash INTEGER PRIMARY KEY,
                     embedding BLOB NOT NULL,
                     created_at INTEGER NOT NULL
                 )
@@ -116,29 +109,26 @@ public final class LayeredEmbeddingCache implements EmbeddingCache {
         return CompletableFuture.runAsync(this::initialize, executor);
     }
 
-    // === Read Operations ===
-
     @Override
-    public CompletableFuture<Optional<float[]>> get(String contentHash) {
-        float[] cached = l1Cache.getIfPresent(contentHash);
+    public CompletableFuture<Optional<float[]>> get(long key) {
+        float[] cached = l1Cache.getIfPresent(key);
         if (cached != null) {
             return CompletableFuture.completedFuture(Optional.of(cached));
         }
-        return CompletableFuture.supplyAsync(() -> getFromL2(contentHash), executor);
+        return CompletableFuture.supplyAsync(() -> getFromL2(key), executor);
     }
 
     @Override
-    public CompletableFuture<Map<String, float[]>> getAll(List<String> contentHashes) {
-        Map<String, float[]> result = new HashMap<>();
-        List<String> misses = new ArrayList<>();
+    public CompletableFuture<Map<Long, float[]>> getAll(List<Long> keys) {
+        Map<Long, float[]> result = new HashMap<>();
+        List<Long> misses = new ArrayList<>();
 
-        // Check L1 first
-        for (String hash : contentHashes) {
-            float[] cached = l1Cache.getIfPresent(hash);
+        for (Long key : keys) {
+            float[] cached = l1Cache.getIfPresent(key);
             if (cached != null) {
-                result.put(hash, cached);
+                result.put(key, cached);
             } else {
-                misses.add(hash);
+                misses.add(key);
             }
         }
 
@@ -146,29 +136,28 @@ public final class LayeredEmbeddingCache implements EmbeddingCache {
             return CompletableFuture.completedFuture(result);
         }
 
-        // Batch fetch from L2
         return CompletableFuture.supplyAsync(() -> {
             try {
-                Map<String, float[]> fromL2 = getBatchFromL2(misses);
+                Map<Long, float[]> fromL2 = getBatchFromL2(misses);
                 result.putAll(fromL2);
                 return result;
             } catch (SQLException e) {
                 logger.log(Level.WARNING, "Failed batch get from cache", e);
-                return result; // Return partial results
+                return result;
             }
         }, executor);
     }
 
-    private Optional<float[]> getFromL2(String contentHash) {
+    private Optional<float[]> getFromL2(long key) {
         String sql = "SELECT embedding FROM embedding_cache WHERE content_hash = ?";
         try (Connection conn = dataSource.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
-            stmt.setString(1, contentHash);
+            stmt.setLong(1, key);
             try (ResultSet rs = stmt.executeQuery()) {
                 if (rs.next()) {
                     byte[] blob = rs.getBytes("embedding");
                     float[] embedding = deserializeEmbedding(blob);
-                    l1Cache.put(contentHash, embedding);
+                    l1Cache.put(key, embedding);
                     return Optional.of(embedding);
                 }
             }
@@ -178,73 +167,60 @@ public final class LayeredEmbeddingCache implements EmbeddingCache {
         return Optional.empty();
     }
 
-    private Map<String, float[]> getBatchFromL2(List<String> hashes) throws SQLException {
-        Map<String, float[]> result = new HashMap<>();
-        if (hashes.isEmpty()) return result;
+    private Map<Long, float[]> getBatchFromL2(List<Long> keys) throws SQLException {
+        Map<Long, float[]> result = new HashMap<>();
+        if (keys.isEmpty()) return result;
 
-        // Build IN clause with placeholders
-        String placeholders = String.join(",", hashes.stream().map(h -> "?").toList());
+        String placeholders = String.join(",", keys.stream().map(k -> "?").toList());
         String sql = "SELECT content_hash, embedding FROM embedding_cache WHERE content_hash IN (" + placeholders + ")";
 
         try (Connection conn = dataSource.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
-            for (int i = 0; i < hashes.size(); i++) {
-                stmt.setString(i + 1, hashes.get(i));
+            for (int i = 0; i < keys.size(); i++) {
+                stmt.setLong(i + 1, keys.get(i));
             }
             try (ResultSet rs = stmt.executeQuery()) {
                 while (rs.next()) {
-                    String hash = rs.getString("content_hash");
+                    long key = rs.getLong("content_hash");
                     byte[] blob = rs.getBytes("embedding");
                     float[] embedding = deserializeEmbedding(blob);
-                    result.put(hash, embedding);
-                    l1Cache.put(hash, embedding);
+                    result.put(key, embedding);
+                    l1Cache.put(key, embedding);
                 }
             }
         }
         return result;
     }
 
-    // === Write Operations ===
-
     @Override
-    public CompletableFuture<Void> put(String contentHash, float[] embedding) {
-        l1Cache.put(contentHash, embedding);
+    public CompletableFuture<Void> put(long key, float[] embedding) {
+        l1Cache.put(key, embedding);
         byte[] serialized = serializeEmbedding(embedding);
         long timestamp = System.currentTimeMillis();
 
-        writeBuffer.offer(new WriteEntry(contentHash, serialized, timestamp));
+        writeBuffer.offer(new WriteEntry(key, serialized, timestamp));
         int size = writeBufferSize.incrementAndGet();
 
-        // Trigger flush if batch size reached
-        if (size >= WRITE_BEHIND_BATCH_SIZE && flushPending.compareAndSet(false, true)) {
-            return CompletableFuture.runAsync(() -> {
-                flushInternal().join();
-                flushPending.set(false);
-            }, executor);
+        if (size >= WRITE_BEHIND_BATCH_SIZE && !isShuttingDown.get() && flushPending.compareAndSet(false, true)) {
+            return flushAsync();
         }
 
         return CompletableFuture.completedFuture(null);
     }
 
     @Override
-    public CompletableFuture<Void> putAll(Map<String, float[]> embeddings) {
-        // Add all to L1 immediately
+    public CompletableFuture<Void> putAll(Map<Long, float[]> embeddings) {
         l1Cache.putAll(embeddings);
 
-        // Buffer all writes
         long timestamp = System.currentTimeMillis();
-        for (Map.Entry<String, float[]> entry : embeddings.entrySet()) {
+        for (Map.Entry<Long, float[]> entry : embeddings.entrySet()) {
             byte[] serialized = serializeEmbedding(entry.getValue());
             writeBuffer.offer(new WriteEntry(entry.getKey(), serialized, timestamp));
         }
         int size = writeBufferSize.addAndGet(embeddings.size());
 
-        // Trigger flush if batch size reached
-        if (size >= WRITE_BEHIND_BATCH_SIZE && flushPending.compareAndSet(false, true)) {
-            return CompletableFuture.runAsync(() -> {
-                flushInternal().join();
-                flushPending.set(false);
-            }, executor);
+        if (size >= WRITE_BEHIND_BATCH_SIZE && !isShuttingDown.get() && flushPending.compareAndSet(false, true)) {
+            return flushAsync();
         }
 
         return CompletableFuture.completedFuture(null);
@@ -263,16 +239,35 @@ public final class LayeredEmbeddingCache implements EmbeddingCache {
         return CompletableFuture.runAsync(() -> {
             List<WriteEntry> batch = new ArrayList<>(WRITE_BEHIND_BATCH_SIZE);
             WriteEntry entry;
-            while ((entry = writeBuffer.poll()) != null) {
+            int drained = 0;
+
+            while ((entry = writeBuffer.poll()) != null && drained < WRITE_BEHIND_BATCH_SIZE) {
                 batch.add(entry);
                 writeBufferSize.decrementAndGet();
-                if (batch.size() >= WRITE_BEHIND_BATCH_SIZE) {
-                    flushBatch(batch);
-                    batch.clear();
-                }
+                drained++;
             }
+
             if (!batch.isEmpty()) {
                 flushBatch(batch);
+            }
+
+            if (writeBufferSize.get() > 0 && !isShuttingDown.get() &&
+                writeBufferSize.get() < MAX_WRITE_BUFFER_SIZE) {
+                scheduler.submit(() -> {
+                    if (!isShuttingDown.get() && flushPending.compareAndSet(false, true)) {
+                        flushInternal();
+                    }
+                });
+            }
+        }, executor);
+    }
+
+    private CompletableFuture<Void> flushAsync() {
+        return CompletableFuture.runAsync(() -> {
+            try {
+                flushInternal().join();
+            } finally {
+                flushPending.set(false);
             }
         }, executor);
     }
@@ -284,7 +279,7 @@ public final class LayeredEmbeddingCache implements EmbeddingCache {
         try (Connection conn = dataSource.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
             for (WriteEntry entry : batch) {
-                stmt.setString(1, entry.hash);
+                stmt.setLong(1, entry.key);
                 stmt.setBytes(2, entry.data);
                 stmt.setLong(3, entry.timestamp);
                 stmt.addBatch();
@@ -294,8 +289,6 @@ public final class LayeredEmbeddingCache implements EmbeddingCache {
             logger.log(Level.WARNING, "Failed to flush batch to cache", e);
         }
     }
-
-    // === Other Operations ===
 
     @Override
     public CompletableFuture<Void> clear() {
@@ -328,18 +321,26 @@ public final class LayeredEmbeddingCache implements EmbeddingCache {
 
     @Override
     public void shutdown() {
-        shutdownRequested.set(true);
-        scheduler.shutdown();
+        if (isShuttingDown.compareAndSet(false, true)) {
+            scheduler.shutdown();
 
-        // Final flush before shutdown
-        try {
-            flush().get(5, TimeUnit.SECONDS);
-        } catch (Exception e) {
-            logger.log(Level.WARNING, "Failed to flush on shutdown", e);
+            try {
+                flush().get(3, TimeUnit.SECONDS);
+            } catch (Exception e) {
+                logger.log(Level.WARNING, "Failed to flush on shutdown", e);
+            }
+
+            l1Cache.invalidateAll();
+            executor.shutdown();
+            try {
+                if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
+                    executor.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                executor.shutdownNow();
+                Thread.currentThread().interrupt();
+            }
         }
-
-        l1Cache.invalidateAll();
-        executor.shutdown();
     }
 
     // === ByteBuffer Pooling ===
@@ -366,7 +367,8 @@ public final class LayeredEmbeddingCache implements EmbeddingCache {
         try {
             buffer.limit(requiredCapacity);
             buffer.asFloatBuffer().put(embedding);
-            byte[] result = new byte[requiredCapacity];
+            buffer.flip();
+            byte[] result = new byte[buffer.remaining()];
             buffer.get(result);
             return result;
         } finally {
@@ -375,9 +377,9 @@ public final class LayeredEmbeddingCache implements EmbeddingCache {
     }
 
     private float[] deserializeEmbedding(byte[] bytes) {
-        float[] embedding = new float[bytes.length / Float.BYTES];
-        ByteBuffer.wrap(bytes).order(ByteOrder.nativeOrder())
-            .asFloatBuffer().get(embedding);
+        ByteBuffer buffer = ByteBuffer.wrap(bytes).order(ByteOrder.nativeOrder());
+        float[] embedding = new float[buffer.remaining() / Float.BYTES];
+        buffer.asFloatBuffer().get(embedding);
         return embedding;
     }
 }

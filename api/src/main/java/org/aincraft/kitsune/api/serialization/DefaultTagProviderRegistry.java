@@ -1,6 +1,5 @@
 package org.aincraft.kitsune.api.serialization;
 
-import java.util.HashSet;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -36,7 +35,7 @@ final class DefaultTagProviderRegistry implements TagProviderRegistry {
   public Set<String> collectTags(Item item) {
     Objects.requireNonNull(item, "item cannot be null");
 
-    Set<String> tags = new HashSet<>();
+    Tags tags = new Tags();
     for (var provider : providers) {
       try {
         provider.appendTags(tags, item);
@@ -45,6 +44,6 @@ final class DefaultTagProviderRegistry implements TagProviderRegistry {
         // to prevent one bad provider from breaking indexing
       }
     }
-    return tags;
+    return tags.toSet();
   }
 }

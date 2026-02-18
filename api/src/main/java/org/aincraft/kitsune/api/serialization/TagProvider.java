@@ -1,19 +1,18 @@
 package org.aincraft.kitsune.api.serialization;
 
-import java.util.Collection;
 import org.aincraft.kitsune.Item;
 
 /**
  * Provides custom tags for items during serialization.
- * Implementations can add tags based on item properties or external data.
+ * Implementations transform the mutable Tags collection based on item properties.
  */
 @FunctionalInterface
 public interface TagProvider {
     /**
-     * Appends tags for an item to the provided collection.
+     * Transforms tags for an item using the fluent Tags API.
      *
-     * @param tags The collection to append tags to
+     * @param tags The mutable tag collection to transform
      * @param item The item context to extract tags from
      */
-    void appendTags(Collection<String> tags, Item item);
+    void appendTags(Tags tags, Item item);
 }

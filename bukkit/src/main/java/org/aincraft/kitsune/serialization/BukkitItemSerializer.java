@@ -35,4 +35,21 @@ public class BukkitItemSerializer extends GenericItemSerializer {
         }
         return serialize(itemList);
     }
+
+    /**
+     * Convenience method for serializing ItemStack arrays with tree structure.
+     */
+    public ContainerNode serializeItemsToChunksTree(ItemStack[] items) {
+        if (items == null || items.length == 0) {
+            return new ContainerNode("inventory", null, null, 0, Collections.emptyList());
+        }
+
+        List<ItemStack> itemList = new ArrayList<>();
+        for (ItemStack item : items) {
+            if (item != null && !item.getType().isAir()) {
+                itemList.add(item);
+            }
+        }
+        return serializeTree(itemList);
+    }
 }

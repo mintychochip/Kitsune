@@ -4,6 +4,7 @@ import org.aincraft.kitsune.Platform;
 import org.aincraft.kitsune.cache.EmbeddingCache;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -34,7 +35,7 @@ public final class CachedEmbeddingService implements EmbeddingService {
 
     @Override
     public CompletableFuture<float[]> embed(String text, String taskType) {
-        String key = toCacheKey(text);
+        long key = toCacheKey(text);
 
         return cache.get(key)
                 .thenCompose(cachedEmbedding -> {
@@ -59,14 +60,14 @@ public final class CachedEmbeddingService implements EmbeddingService {
         }
 
         // Build cache keys
-        List<String> cacheKeys = texts.stream()
-                .map(CachedEmbeddingService::toCacheKey)
+        List<Long> cacheKeys = texts.stream()
+                .mapToLong(CachedEmbeddingService::toCacheKey)
+                .boxed()
                 .collect(Collectors.toList());
 
         // Batch cache lookup
         return cache.getAll(cacheKeys)
                 .thenCompose(cachedMap -> {
-                    // Separate hits and misses
                     List<Integer> missIndices = new ArrayList<>();
                     List<String> missTexts = new ArrayList<>();
                     float[][] results = new float[texts.size()][];
@@ -84,16 +85,13 @@ public final class CachedEmbeddingService implements EmbeddingService {
                     int cacheHits = texts.size() - missIndices.size();
                     platform.getLogger().info("Batch cache: " + cacheHits + " hits, " + missTexts.size() + " misses");
 
-                    // If all cached, return immediately
                     if (missTexts.isEmpty()) {
                         return CompletableFuture.completedFuture(toList(results));
                     }
 
-                    // Embed missing texts in batch
                     return delegate.embedBatch(missTexts, taskType)
                             .thenCompose(missedEmbeddings -> {
-                                // Build batch put map
-                                Map<String, float[]> toCache = new HashMap<>(missedEmbeddings.size());
+                                Map<Long, float[]> toCache = new HashMap<>(missedEmbeddings.size());
                                 for (int i = 0; i < missedEmbeddings.size(); i++) {
                                     int originalIndex = missIndices.get(i);
                                     float[] embedding = missedEmbeddings.get(i);
@@ -101,7 +99,6 @@ public final class CachedEmbeddingService implements EmbeddingService {
                                     toCache.put(cacheKeys.get(originalIndex), embedding);
                                 }
 
-                                // Batch cache put
                                 return cache.putAll(toCache)
                                         .thenApply(v -> toList(results));
                             });
@@ -116,7 +113,7 @@ public final class CachedEmbeddingService implements EmbeddingService {
 
     @Override
     public void shutdown() {
-        cache.flush().join(); // Ensure all writes flushed
+        cache.flush().join();
         cache.shutdown();
         delegate.shutdown();
     }
@@ -129,19 +126,21 @@ public final class CachedEmbeddingService implements EmbeddingService {
         return cache.flush();
     }
 
-    private static String toCacheKey(String text) {
-        return Integer.toHexString(text.hashCode()) + ":" + text.length();
+    /**
+     * Fast cache key: packs hashCode + length into a long.
+     * No string allocation, just primitive operations.
+     */
+    private static long toCacheKey(String text) {
+        return ((long) text.hashCode() << 32) | text.length();
     }
 
     private static String truncate(String s, int maxLen) {
-        return s.substring(0, Math.min(maxLen, s.length()));
+        return s.length() > maxLen ? s.substring(0, maxLen) : s;
     }
 
     private static List<float[]> toList(float[][] array) {
         List<float[]> list = new ArrayList<>(array.length);
-        for (float[] f : array) {
-            list.add(f);
-        }
+        Collections.addAll(list, array);
         return list;
     }
 

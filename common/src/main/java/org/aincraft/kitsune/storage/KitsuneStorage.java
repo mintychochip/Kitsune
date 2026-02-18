@@ -80,13 +80,22 @@ public final class KitsuneStorage {
             List<VectorSearchResult> vectorResults = vectorIndex.search(embedding, limit).join();
             logger.fine("Vector search returned " + vectorResults.size() + " results");
 
+            Set<Integer> candidateOrdinals = new HashSet<>();
+            for (VectorSearchResult vectorResult : vectorResults) {
+                candidateOrdinals.add(vectorResult.ordinal());
+            }
+
+            List<ChunkWithLocation> chunks = containerStorage.getChunksByOrdinals(candidateOrdinals);
+            Map<Integer, ChunkWithLocation> chunkMap = new HashMap<>();
+            for (ChunkWithLocation chunk : chunks) {
+                chunkMap.put(chunk.metadata().ordinal(), chunk);
+            }
+
             List<SearchResult> results = new ArrayList<>();
             for (VectorSearchResult vectorResult : vectorResults) {
                 try {
-                    Optional<ChunkWithLocation> chunkOpt = containerStorage.getChunkByOrdinal(vectorResult.ordinal());
-
-                    if (chunkOpt.isPresent()) {
-                        ChunkWithLocation chunk = chunkOpt.get();
+                    ChunkWithLocation chunk = chunkMap.get(vectorResult.ordinal());
+                    if (chunk != null) {
                         Location location = chunk.location();
 
                         if (worldName != null && !location.getWorld().getName().equals(worldName)) {
@@ -118,7 +127,7 @@ public final class KitsuneStorage {
                     }
                 } catch (Exception e) {
                     logger.log(Level.WARNING,
-                        "Error fetching metadata for ordinal " + vectorResult.ordinal(), e);
+                        "Error processing vector result for ordinal " + vectorResult.ordinal(), e);
                 }
             }
 
@@ -161,46 +170,54 @@ public final class KitsuneStorage {
             List<VectorSearchResult> vectorResults = vectorIndex.searchWithFilter(embedding, limit * 2, ordinalSet).join();
             logger.fine("Vector search returned " + vectorResults.size() + " results");
 
-            List<SearchResult> candidates = new ArrayList<>();
-            for (VectorSearchResult vectorResult : vectorResults) {
-                try {
-                    Optional<ChunkWithLocation> chunkOpt = containerStorage.getChunkByOrdinal(vectorResult.ordinal());
+            Set<Integer> candidateOrdinals = new HashSet<>();
+          for (VectorSearchResult vectorResult : vectorResults) {
+              candidateOrdinals.add(vectorResult.ordinal());
+          }
 
-                    if (chunkOpt.isPresent()) {
-                        ChunkWithLocation chunk = chunkOpt.get();
-                        Location location = chunk.location();
+          List<ChunkWithLocation> chunks = containerStorage.getChunksByOrdinals(candidateOrdinals);
+          Map<Integer, ChunkWithLocation> chunkMap = new HashMap<>();
+          for (ChunkWithLocation chunk : chunks) {
+              chunkMap.put(chunk.metadata().ordinal(), chunk);
+          }
 
-                        double distance = center.distanceTo(location);
-                        if (distance <= radius) {
-                            ContainerPath containerPath = ContainerPath.ROOT;
-                            if (chunk.metadata().containerPath() != null && !chunk.metadata().containerPath().isEmpty()) {
-                                try {
-                                    containerPath = ContainerPath.fromJson(chunk.metadata().containerPath());
-                                } catch (Exception e) {
-                                    logger.fine("Failed to parse container path: " + e.getMessage());
-                                }
-                            }
+          List<SearchResult> candidates = new ArrayList<>();
+          for (VectorSearchResult vectorResult : vectorResults) {
+              try {
+                  ChunkWithLocation chunk = chunkMap.get(vectorResult.ordinal());
+                  if (chunk != null) {
+                      Location location = chunk.location();
+                      double distance = center.distanceTo(location);
+                      if (distance <= radius) {
+                          ContainerPath containerPath = ContainerPath.ROOT;
+                          if (chunk.metadata().containerPath() != null && !chunk.metadata().containerPath().isEmpty()) {
+                              try {
+                                  containerPath = ContainerPath.fromJson(chunk.metadata().containerPath());
+                              } catch (Exception e) {
+                                  logger.fine("Failed to parse container path: " + e.getMessage());
+                              }
+                          }
 
-                            SearchResult result = new SearchResult(
-                                location,
-                                List.of(location),
-                                vectorResult.score(),
-                                chunk.metadata().contentText(),
-                                chunk.metadata().contentText(),
-                                containerPath
-                            );
-                            candidates.add(result);
+                          SearchResult result = new SearchResult(
+                              location,
+                              List.of(location),
+                              vectorResult.score(),
+                              chunk.metadata().contentText(),
+                              chunk.metadata().contentText(),
+                              containerPath
+                          );
+                          candidates.add(result);
 
-                            if (candidates.size() >= limit) {
-                                break;
-                            }
-                        }
-                    }
-                } catch (Exception e) {
-                    logger.log(Level.WARNING,
-                        "Error fetching metadata for ordinal " + vectorResult.ordinal(), e);
-                }
-            }
+                          if (candidates.size() >= limit) {
+                              break;
+                          }
+                      }
+                  }
+              } catch (Exception e) {
+                  logger.log(Level.WARNING,
+                      "Error processing vector result for ordinal " + vectorResult.ordinal(), e);
+              }
+          }
 
             logger.fine("Radius search returning " + candidates.size() + " results");
             return candidates;
@@ -366,16 +383,14 @@ public final class KitsuneStorage {
                 world, minX, maxX, minY, maxY, minZ, maxZ);
             logger.fine("Found " + ordinals.size() + " ordinals in bounding box");
 
+            List<ChunkWithLocation> chunks = containerStorage.getChunksByOrdinals(new HashSet<>(ordinals));
             Set<UUID> containerIds = new HashSet<>();
-            for (int ordinal : ordinals) {
+            for (ChunkWithLocation chunk : chunks) {
                 try {
-                    Optional<ChunkWithLocation> chunkOpt = containerStorage.getChunkByOrdinal(ordinal);
-                    if (chunkOpt.isPresent()) {
-                        // TODO: Need to track container ID in chunk metadata
-                        logger.fine("Added container from ordinal " + ordinal);
-                    }
+                    // TODO: Need to track container ID in chunk metadata
+                    logger.fine("Added container from ordinal " + chunk.metadata().ordinal());
                 } catch (Exception e) {
-                    logger.log(Level.WARNING, "Error processing ordinal " + ordinal, e);
+                    logger.log(Level.WARNING, "Error processing chunk from ordinal " + chunk.metadata().ordinal(), e);
                 }
             }
 

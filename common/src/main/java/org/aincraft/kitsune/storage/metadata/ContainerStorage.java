@@ -340,6 +340,37 @@ public final class ContainerStorage {
         return Optional.empty();
     }
 
+    public List<ChunkWithLocation> getChunksByOrdinals(Set<Integer> ordinals) {
+        if (ordinals == null || ordinals.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        List<ChunkWithLocation> r = new ArrayList<>();
+        String placeholders = ordinals.stream()
+            .map(o -> "?")
+            .collect(java.util.stream.Collectors.joining(","));
+
+        String query = "SELECT cc.id, cc.ordinal, cc.chunk_index, cc.content_text, cc.timestamp, cc.container_path, cl.world, cl.x, cl.y, cl.z FROM container_chunks cc JOIN containers c ON cc.container_id = c.id LEFT JOIN container_locations cl ON c.id = cl.container_id AND cl.is_primary = 1 WHERE cc.ordinal IN (" + placeholders + ")";
+
+        try (Connection c = dataSource.getConnection();
+             PreparedStatement ps = c.prepareStatement(query)) {
+
+            int index = 1;
+            for (int ordinal : ordinals) {
+                ps.setInt(index++, ordinal);
+            }
+
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    r.add(toChunkWithLocation(rs));
+                }
+            }
+        } catch (SQLException e) {
+            logger.log(java.util.logging.Level.WARNING, "Failed get chunks by ordinals", e);
+        }
+        return r;
+    }
+
     private ChunkMetadata toChunkMeta(ResultSet rs) throws SQLException {
         return new ChunkMetadata(UUID.fromString(rs.getString(1)), rs.getInt(3), rs.getInt(4), rs.getString(5), rs.getLong(6), rs.getString(7));
     }

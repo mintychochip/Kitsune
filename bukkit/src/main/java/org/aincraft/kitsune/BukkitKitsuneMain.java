@@ -49,6 +49,7 @@ import org.aincraft.kitsune.util.BukkitItemLoader;
 import org.aincraft.kitsune.model.tree.SearchResultTreeRenderer;
 import org.aincraft.kitsune.model.tree.SearchResultTreeBuilder;
 import org.aincraft.kitsune.visualizer.ContainerItemDisplay;
+import org.aincraft.kitsune.cache.ItemDataCache;
 import org.bukkit.Color;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -78,6 +79,7 @@ public final class BukkitKitsuneMain extends JavaPlugin {
     private PlayerRadiusStorage playerRadiusStorage;
     private java.util.concurrent.ExecutorService playerRadiusExecutor;
     private ContainerItemDisplay itemDisplayVisualizer;
+    private ItemDataCache itemDataCache;
     private boolean initialized = false;
     private volatile boolean providerMismatch = false;
 
@@ -171,6 +173,9 @@ public final class BukkitKitsuneMain extends JavaPlugin {
             // Create ItemDisplay visualizer
             this.itemDisplayVisualizer = new ContainerItemDisplay(getLogger(), kitsuneConfig, this);
 
+            // Create item data cache
+            this.itemDataCache = new ItemDataCache();
+
             return null;
         }).thenCompose(v -> embeddingService.initialize())
           .thenRun(() -> storage.initialize())
@@ -180,7 +185,7 @@ public final class BukkitKitsuneMain extends JavaPlugin {
               this.searchHistoryExecutor = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor();
               this.playerRadiusExecutor = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor();
               this.searchHistoryStorage = new SearchHistoryStorage(getLogger(), dataSource, searchHistoryExecutor);
-              this.playerRadiusStorage = new PlayerRadiusStorage(getLogger(), dataSource, playerRadiusExecutor, kitsuneConfig.search().getSearchRadius());
+              this.playerRadiusStorage = new PlayerRadiusStorage(getLogger(), dataSource, playerRadiusExecutor, kitsuneConfig.search().radius());
               return searchHistoryStorage.initialize()
                   .thenCompose(v2 -> playerRadiusStorage.initialize());
           })
@@ -211,7 +216,7 @@ public final class BukkitKitsuneMain extends JavaPlugin {
     private void registerListeners() {
         var pm = getServer().getPluginManager();
         var locationResolver = new BukkitContainerLocationResolver();
-        pm.registerEvents(new ContainerCloseListener(containerIndexer, locationResolver), this);
+        pm.registerEvents(new ContainerCloseListener(containerIndexer, locationResolver, this), this);
         pm.registerEvents(new HopperTransferListener(containerIndexer, locationResolver, this), this);
         pm.registerEvents(new ContainerBreakListener(storage, containerIndexer, this), this);
         pm.registerEvents(new ChestPlaceListener(locationResolver, containerIndexer, this), this);
@@ -439,7 +444,7 @@ public final class BukkitKitsuneMain extends JavaPlugin {
         Player player = source.getSender() instanceof Player p ? p : null;
 
         // Determine effective radius with validation
-        int effectiveRadius = kitsuneConfig.search().getSearchRadius();
+        int effectiveRadius = kitsuneConfig.search().radius();
 
         if (customRadius != null) {
             if (player == null) {
@@ -462,7 +467,7 @@ public final class BukkitKitsuneMain extends JavaPlugin {
                 return 1;
             } else {
                 // Fallback: validate against config max radius
-                int configMaxRadius = kitsuneConfig.search().getSearchRadius();
+                int configMaxRadius = kitsuneConfig.search().radius();
                 if (customRadius > configMaxRadius) {
                     source.getSender().sendMessage("§cRadius " + customRadius + " exceeds server limit of " + configMaxRadius + " blocks.");
                     return 0;
@@ -537,18 +542,14 @@ public final class BukkitKitsuneMain extends JavaPlugin {
             return;
         }
 
-        // Step 1: Filter results by protection
-        var accessibleResults = new java.util.ArrayList<org.aincraft.kitsune.model.SearchResult>();
-
-        for (var result : filteredResults) {
-            // Filter by protection if player
-            if (player != null && protectionProvider != null && !protectionProvider.canAccess(player.getUniqueId(), result.location())) {
-                continue;
-            }
-
-            // Add to accessible results for tree building
-            accessibleResults.add(result);
-        }
+        // Step 1: Filter results by protection using stream
+        var accessibleResults = filteredResults.stream()
+            .filter(result -> {
+                // Filter by protection if player
+                return player == null || protectionProvider == null ||
+                       protectionProvider.canAccess(player.getUniqueId(), result.location());
+            })
+            .toList();
 
         if (accessibleResults.isEmpty()) {
             source.getSender().sendMessage("§cNo accessible containers found matching your query.");
@@ -557,7 +558,8 @@ public final class BukkitKitsuneMain extends JavaPlugin {
 
         // Step 2: Build tree structure from common SearchResult objects
         BukkitItemLoader itemLoader = new BukkitItemLoader(getLogger());
-        List<org.aincraft.kitsune.model.tree.SearchResultTreeNode> treeRoots = SearchResultTreeBuilder.buildTree(accessibleResults, getLogger(), itemLoader);
+        List<org.aincraft.kitsune.model.tree.SearchResultTreeNode> treeRoots = SearchResultTreeBuilder.buildTree(
+            accessibleResults, getLogger(), itemLoader, itemDataCache);
 
         // Step 3: Render tree to components
         List<Component> renderedLines = SearchResultTreeRenderer.RENDERER.render(treeRoots);
@@ -569,8 +571,8 @@ public final class BukkitKitsuneMain extends JavaPlugin {
         }
 
         // Step 5: Spawn highlights for all locations
-        for (var result : accessibleResults) {
-            if (player != null && player.isOnline()) {
+        if (player != null && player.isOnline()) {
+            for (var result : accessibleResults) {
                 Location bukkitLoc = BukkitLocationFactory.toBukkitLocationOrNull(result.location());
                 if (bukkitLoc != null) {
                     spawnHighlight(bukkitLoc, player, result);
@@ -1264,7 +1266,7 @@ public final class BukkitKitsuneMain extends JavaPlugin {
             return 0;
         }
 
-        int defaultRadius = kitsuneConfig.search().getSearchRadius();
+        int defaultRadius = kitsuneConfig.search().radius();
 
         // Get the radius asynchronously
         playerRadiusStorage.getMaxRadius(player.getUniqueId())
@@ -1305,6 +1307,9 @@ public final class BukkitKitsuneMain extends JavaPlugin {
         }
         if (itemDisplayVisualizer != null) {
             itemDisplayVisualizer.cleanupAll();
+        }
+        if (itemDataCache != null) {
+            itemDataCache.clear();
         }
         KitsuneService.unregister();
         getLogger().info("Kitsune disabled.");

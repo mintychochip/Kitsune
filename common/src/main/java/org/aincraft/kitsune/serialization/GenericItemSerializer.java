@@ -5,6 +5,7 @@ import org.aincraft.kitsune.api.serialization.ItemSerializer;
 import org.aincraft.kitsune.api.serialization.TagProviderRegistry;
 import org.aincraft.kitsune.api.indexing.SerializedItem;
 import org.aincraft.kitsune.api.model.NestedContainerRef;
+import org.aincraft.kitsune.api.model.ContainerNode;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
@@ -238,12 +239,34 @@ public class GenericItemSerializer implements ItemSerializer {
 
     @Override
     public List<SerializedItem> serialize(List<?> items) {
-        List<SerializedItem> results = new ArrayList<>();
-        serializeRecursive(items, results, 0, new ArrayList<>());
-        return results;
+        ContainerNode root = serializeTree(items);
+        return flattenTree(root);
     }
 
-    private void serializeRecursive(List<?> items, List<SerializedItem> results, int depth, List<NestedContainerRef> containerPath) {
+    @Override
+    public ContainerNode serializeTree(List<?> items) {
+        List<SerializedItem> itemsList = new ArrayList<>();
+        List<ContainerNode> children = new ArrayList<>();
+
+        // Build the tree structure
+        buildTree(items, itemsList, children, 0, new ArrayList<>());
+
+        // Create root container (top-level items as children of implicit root)
+        return new ContainerNode("inventory", null, null, 0, children, itemsList);
+    }
+
+    /**
+     * Builds the container tree structure recursively.
+     */
+    private void buildTree(List<?> items,
+                          List<SerializedItem> itemsAtLevel,
+                          List<ContainerNode> childrenAtLevel,
+                          int depth,
+                          List<NestedContainerRef> containerPath) {
+
+        // Group items and nested containers
+        List<NestedContainer> nestedContainers = new ArrayList<>();
+
         for (int slot = 0; slot < items.size(); slot++) {
             Object item = items.get(slot);
             if (shouldSkip(item)) {
@@ -251,54 +274,113 @@ public class GenericItemSerializer implements ItemSerializer {
             }
 
             Item context = createContext(item);
-            Set<String> tags = tagRegistry.collectTags(context);
-            String embeddingText = createEmbeddingText(context, tags);
-            String storageJson = createStorageJson(context, slot, containerPath);
 
-            results.add(new SerializedItem(embeddingText, storageJson));
+            // Check if this item is a container with nested items
+            List<NestedItems> nestedItemsList = getNestedItems(context, slot);
+            if (!nestedItemsList.isEmpty()) {
+                // This is a container - add to nested containers list
+                nestedContainers.add(new NestedContainer(item, slot, nestedItemsList));
+            } else {
+                // Regular item - serialize it
+                Set<String> tags = tagRegistry.collectTags(context);
+                String embeddingText = createEmbeddingText(context, tags);
+                String storageJson = createStorageJson(context, slot, containerPath);
 
-            // Handle nested items (bundles, shulkers, chests, etc.)
-            // Allow deep nesting since creative mode middle-click can nest infinitely
-            if (depth < 10) { // Limit nesting depth to prevent infinite loops
-                for (NestedItems nested : getNestedItems(context, slot)) {
-                    // Build new path: current path + this container with slot index
-                    List<NestedContainerRef> nestedPath = new ArrayList<>(containerPath);
-
-                    // Parse container info for color and custom name
-                    String color = null;
-                    String customName = null;
-                    String containerInfo = nested.containerInfo;
-                    if (containerInfo != null && !containerInfo.isEmpty()) {
-                        // Check if it starts with a quoted custom name
-                        if (containerInfo.contains("\"")) {
-                            int firstQuote = containerInfo.indexOf('"');
-                            int lastQuote = containerInfo.lastIndexOf('"');
-                            if (firstQuote < lastQuote) {
-                                customName = containerInfo.substring(firstQuote + 1, lastQuote);
-                            }
-                            // Color is before the quote
-                            String beforeQuote = containerInfo.substring(0, firstQuote).trim();
-                            if (!beforeQuote.isEmpty()) {
-                                color = beforeQuote;
-                            }
-                        } else {
-                            // Just color, no custom name
-                            color = containerInfo;
-                        }
-                    }
-
-                    NestedContainerRef ref = new NestedContainerRef(
-                        nested.containerType,
-                        color,
-                        customName,
-                        slot  // Slot of the container in parent inventory
-                    );
-                    nestedPath.add(ref);
-
-                    serializeRecursive(nested.items, results, depth + 1, nestedPath);
-                }
+                itemsAtLevel.add(new SerializedItem(embeddingText, storageJson));
             }
         }
+
+        // Process nested containers and build children
+        for (NestedContainer nested : nestedContainers) {
+            // Create the container node
+            Item context = createContext(nested.item);
+            String color = null;
+            String customName = null;
+
+            // Parse container info
+            String containerInfo = nested.nestedItems.containerInfo;
+            if (containerInfo != null && !containerInfo.isEmpty()) {
+                if (containerInfo.contains("\"")) {
+                    int firstQuote = containerInfo.indexOf('"');
+                    int lastQuote = containerInfo.lastIndexOf('"');
+                    if (firstQuote < lastQuote) {
+                        customName = containerInfo.substring(firstQuote + 1, lastQuote);
+                    }
+                    String beforeQuote = containerInfo.substring(0, firstQuote).trim();
+                    if (!beforeQuote.isEmpty()) {
+                        color = beforeQuote;
+                    }
+                } else {
+                    color = containerInfo;
+                }
+            }
+
+            // Create container node with empty items and children
+            ContainerNode containerNode = new ContainerNode(
+                nested.nestedItems.containerType,
+                color,
+                customName,
+                nested.slot,
+                Collections.emptyList(),  // will be filled by recursive call
+                Collections.emptyList()    // items in this container
+            );
+
+            // Recursively build children for this container
+            List<SerializedItem> childItems = new ArrayList<>();
+            List<ContainerNode> childContainers = new ArrayList<>();
+
+            NestedContainerRef ref = new NestedContainerRef(
+                nested.nestedItems.containerType,
+                color,
+                customName,
+                nested.slot
+            );
+            List<NestedContainerRef> childPath = new ArrayList<>(containerPath);
+            childPath.add(ref);
+
+            buildTree(nested.nestedItems.items, childItems, childContainers, depth + 1, childPath);
+
+            // Update the container node with its items and children
+            containerNode = new ContainerNode(
+                nested.nestedItems.containerType,
+                color,
+                customName,
+                nested.slot,
+                childContainers,
+                childItems
+            );
+
+            childrenAtLevel.add(containerNode);
+        }
+    }
+
+    /**
+     * Helper class for nested containers during tree building.
+     */
+    private static class NestedContainer {
+        final Object item;
+        final int slot;
+        final List<NestedItems> nestedItems;
+
+        NestedContainer(Object item, int slot, List<NestedItems> nestedItems) {
+            this.item = item;
+            this.slot = slot;
+            this.nestedItems = nestedItems;
+        }
+    }
+
+    /**
+     * Flattens a ContainerNode tree into a flat list of SerializedItems.
+     * This method maintains backward compatibility with the original interface.
+     */
+    private List<SerializedItem> flattenTree(ContainerNode root) {
+        List<SerializedItem> results = new ArrayList<>();
+        for (ContainerNode child : root.getChildren()) {
+            results.addAll(child.flattenWithPaths().stream()
+                .map(ContainerNode.ItemWithPath::getItem)
+                .toList());
+        }
+        return results;
     }
 
     /**
