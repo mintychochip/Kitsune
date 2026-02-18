@@ -28,7 +28,7 @@ import org.aincraft.kitsune.embedding.download.ModelSpec.TaskPrefixStrategy;
  * Handles model downloading, tokenizer loading, inference, and mean pooling.
  * Uses virtual threads for ONNX inference (JDK 21+).
  */
-public class OnnxEmbeddingService implements EmbeddingService {
+public final class OnnxEmbeddingService implements EmbeddingService {
     private final Platform platform;
     private final ModelSpec spec;
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();

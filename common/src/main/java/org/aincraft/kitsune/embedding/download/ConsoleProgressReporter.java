@@ -8,7 +8,7 @@ import java.util.logging.Logger;
  * Reports download progress to the console logger.
  * Throttles output to avoid spam (max every 2 seconds per file).
  */
-public class ConsoleProgressReporter implements DownloadProgressListener {
+public final class ConsoleProgressReporter implements DownloadProgressListener {
     private final Logger logger;
     private Instant lastReportTime = Instant.EPOCH;
     private static final Duration REPORT_INTERVAL = Duration.ofSeconds(2);

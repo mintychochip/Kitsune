@@ -3,31 +3,24 @@ package org.aincraft.kitsune.embedding;
 import org.aincraft.kitsune.Platform;
 import org.aincraft.kitsune.cache.EmbeddingCache;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.stream.Collectors;
 
 /**
  * Decorator that wraps an EmbeddingService and caches embeddings.
- * Uses SHA-256 hashing to create cache keys from input text.
+ * Uses batch cache operations for improved throughput.
  */
-public class CachedEmbeddingService implements EmbeddingService {
+public final class CachedEmbeddingService implements EmbeddingService {
 
     private final Platform platform;
     private final EmbeddingService delegate;
     private final EmbeddingCache cache;
 
-    /**
-     * Creates a cached embedding service.
-     *
-     * @param platform The platform for logging
-     * @param delegate The underlying embedding service
-     * @param cache The cache to store embeddings
-     */
     public CachedEmbeddingService(Platform platform, EmbeddingService delegate, EmbeddingCache cache) {
         this.platform = platform;
         this.delegate = delegate;
@@ -41,19 +34,19 @@ public class CachedEmbeddingService implements EmbeddingService {
 
     @Override
     public CompletableFuture<float[]> embed(String text, String taskType) {
-        String cacheKey = hashText(text);
+        String key = toCacheKey(text);
 
-        return cache.get(cacheKey)
+        return cache.get(key)
                 .thenCompose(cachedEmbedding -> {
                     if (cachedEmbedding.isPresent()) {
-                        platform.getLogger().info("Embedding cache hit for: " + text.substring(0, Math.min(50, text.length())) + "...");
+                        platform.getLogger().info("Embedding cache hit for: " + truncate(text, 50) + "...");
                         return CompletableFuture.completedFuture(cachedEmbedding.get());
                     }
 
-                    platform.getLogger().info("Generating new embedding for: " + text.substring(0, Math.min(50, text.length())) + "...");
+                    platform.getLogger().info("Generating new embedding for: " + truncate(text, 50) + "...");
                     return delegate.embed(text, taskType)
                             .thenCompose(embedding ->
-                                    cache.put(cacheKey, embedding)
+                                    cache.put(key, embedding)
                                             .thenApply(v -> embedding)
                             );
                 });
@@ -65,70 +58,52 @@ public class CachedEmbeddingService implements EmbeddingService {
             return CompletableFuture.completedFuture(new ArrayList<>());
         }
 
-        // Check cache for all texts first
-        List<String> cacheKeys = new ArrayList<>();
-        for (String text : texts) {
-            cacheKeys.add(hashText(text));
-        }
+        // Build cache keys
+        List<String> cacheKeys = texts.stream()
+                .map(CachedEmbeddingService::toCacheKey)
+                .collect(Collectors.toList());
 
-        // Fetch cache entries for all texts
-        List<CompletableFuture<Optional<float[]>>> cacheFutures = new ArrayList<>();
-        for (String key : cacheKeys) {
-            cacheFutures.add(cache.get(key));
-        }
-
-        // Wait for all cache lookups to complete
-        return CompletableFuture.allOf(cacheFutures.toArray(new CompletableFuture[0]))
-                .thenCompose(v -> {
+        // Batch cache lookup
+        return cache.getAll(cacheKeys)
+                .thenCompose(cachedMap -> {
                     // Separate hits and misses
                     List<Integer> missIndices = new ArrayList<>();
                     List<String> missTexts = new ArrayList<>();
                     float[][] results = new float[texts.size()][];
-                    int cacheHits = 0;
 
                     for (int i = 0; i < texts.size(); i++) {
-                        Optional<float[]> cached = cacheFutures.get(i).join();
-                        if (cached.isPresent()) {
-                            results[i] = cached.get();
-                            cacheHits++;
+                        float[] cached = cachedMap.get(cacheKeys.get(i));
+                        if (cached != null) {
+                            results[i] = cached;
                         } else {
                             missIndices.add(i);
                             missTexts.add(texts.get(i));
                         }
                     }
 
-                    platform.getLogger().info("Batch cache: " + cacheHits + " hits, " + missTexts.size() + " misses out of " + texts.size());
+                    int cacheHits = texts.size() - missIndices.size();
+                    platform.getLogger().info("Batch cache: " + cacheHits + " hits, " + missTexts.size() + " misses");
 
                     // If all cached, return immediately
                     if (missTexts.isEmpty()) {
-                        List<float[]> cachedResults = new ArrayList<>();
-                        for (float[] result : results) {
-                            cachedResults.add(result);
-                        }
-                        return CompletableFuture.completedFuture(cachedResults);
+                        return CompletableFuture.completedFuture(toList(results));
                     }
 
                     // Embed missing texts in batch
                     return delegate.embedBatch(missTexts, taskType)
                             .thenCompose(missedEmbeddings -> {
-                                // Store missing embeddings in cache
-                                List<CompletableFuture<Void>> putFutures = new ArrayList<>();
+                                // Build batch put map
+                                Map<String, float[]> toCache = new HashMap<>(missedEmbeddings.size());
                                 for (int i = 0; i < missedEmbeddings.size(); i++) {
                                     int originalIndex = missIndices.get(i);
                                     float[] embedding = missedEmbeddings.get(i);
                                     results[originalIndex] = embedding;
-                                    putFutures.add(cache.put(cacheKeys.get(originalIndex), embedding));
+                                    toCache.put(cacheKeys.get(originalIndex), embedding);
                                 }
 
-                                // Wait for all cache puts to complete, then return results
-                                return CompletableFuture.allOf(putFutures.toArray(new CompletableFuture[0]))
-                                        .thenApply(v2 -> {
-                                            List<float[]> finalResults = new ArrayList<>();
-                                            for (float[] result : results) {
-                                                finalResults.add(result);
-                                            }
-                                            return finalResults;
-                                        });
+                                // Batch cache put
+                                return cache.putAll(toCache)
+                                        .thenApply(v -> toList(results));
                             });
                 });
     }
@@ -141,48 +116,33 @@ public class CachedEmbeddingService implements EmbeddingService {
 
     @Override
     public void shutdown() {
+        cache.flush().join(); // Ensure all writes flushed
         cache.shutdown();
         delegate.shutdown();
     }
 
-    /**
-     * Clear all cached embeddings.
-     * Used by purge operations to reset the cache.
-     *
-     * @return CompletableFuture that completes when cache is cleared
-     */
     public CompletableFuture<Void> clearCache() {
         return cache.clear();
     }
 
-    /**
-     * Hashes text using SHA-256 and returns hex string.
-     *
-     * @param text The text to hash
-     * @return SHA-256 hash as hex string
-     */
-    private String hashText(String text) {
-        try {
-            MessageDigest md = MessageDigest.getInstance("SHA-256");
-            byte[] hashBytes = md.digest(text.getBytes(StandardCharsets.UTF_8));
-            return bytesToHex(hashBytes);
-        } catch (NoSuchAlgorithmException e) {
-            throw new RuntimeException("SHA-256 algorithm not available", e);
-        }
+    public CompletableFuture<Void> flushCache() {
+        return cache.flush();
     }
 
-    /**
-     * Converts bytes to hex string representation.
-     *
-     * @param bytes The bytes to convert
-     * @return Hex string
-     */
-    private String bytesToHex(byte[] bytes) {
-        StringBuilder sb = new StringBuilder();
-        for (byte b : bytes) {
-            sb.append(String.format("%02x", b));
+    private static String toCacheKey(String text) {
+        return Integer.toHexString(text.hashCode()) + ":" + text.length();
+    }
+
+    private static String truncate(String s, int maxLen) {
+        return s.substring(0, Math.min(maxLen, s.length()));
+    }
+
+    private static List<float[]> toList(float[][] array) {
+        List<float[]> list = new ArrayList<>(array.length);
+        for (float[] f : array) {
+            list.add(f);
         }
-        return sb.toString();
+        return list;
     }
 
     @Override

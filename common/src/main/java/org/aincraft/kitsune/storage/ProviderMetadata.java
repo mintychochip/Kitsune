@@ -17,7 +17,7 @@ import java.util.logging.Logger;
  * Stores provider name and model in a properties file.
  * When provider changes, vectors become incompatible and must be purged.
  */
-public class ProviderMetadata {
+public final class ProviderMetadata {
     private static final String PROVIDER_KEY = "embedding.provider";
     private static final String MODEL_KEY = "embedding.model";
     private static final String FILENAME = "provider_metadata.properties";

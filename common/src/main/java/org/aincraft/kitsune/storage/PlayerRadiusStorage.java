@@ -19,7 +19,7 @@ import javax.sql.DataSource;
  * All operations are asynchronous and use a provided ExecutorService for execution.
  * Supports virtual threads via Executors.newVirtualThreadPerTaskExecutor() for efficient I/O.
  */
-public class PlayerRadiusStorage {
+public final class PlayerRadiusStorage {
     private final Logger logger;
     private final DataSource dataSource;
     private final ExecutorService executor;

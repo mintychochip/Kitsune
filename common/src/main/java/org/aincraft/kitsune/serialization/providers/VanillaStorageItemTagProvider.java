@@ -8,7 +8,7 @@ import org.aincraft.kitsune.api.serialization.TagProvider;
  * Provides tags for storage items: bundles, shulker boxes, chests, barrels, and other
  * container items.
  */
-public class VanillaStorageItemTagProvider implements TagProvider {
+public final class VanillaStorageItemTagProvider implements TagProvider {
 
   @Override
   public void appendTags(Collection<String> tags, Item item) {

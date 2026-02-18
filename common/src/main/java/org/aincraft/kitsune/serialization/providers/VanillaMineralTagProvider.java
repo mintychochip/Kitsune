@@ -8,7 +8,7 @@ import java.util.Collection;
 /**
  * Provides tags for minerals: ores, ingots, gems, raw materials, nuggets.
  */
-public class VanillaMineralTagProvider implements TagProvider {
+public final class VanillaMineralTagProvider implements TagProvider {
 
     @Override
     public void appendTags(Collection<String> tags, Item item) {

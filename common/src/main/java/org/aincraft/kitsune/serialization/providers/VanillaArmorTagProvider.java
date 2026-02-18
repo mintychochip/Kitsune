@@ -8,7 +8,7 @@ import java.util.Collection;
 /**
  * Provides tags for armor: helmets, chestplates, leggings, boots, and wearables.
  */
-public class VanillaArmorTagProvider implements TagProvider {
+public final class VanillaArmorTagProvider implements TagProvider {
 
   @Override
   public void appendTags(Collection<String> tags, Item item) {

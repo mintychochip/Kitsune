@@ -4,7 +4,7 @@ import java.util.Collection;
 import org.aincraft.kitsune.Item;
 import org.aincraft.kitsune.api.serialization.TagProvider;
 
-public class VanillaBlockColorTagProvider implements TagProvider {
+public final class VanillaBlockColorTagProvider implements TagProvider {
 
   private static final String[] VANILLA_COLORS = {
     "white", "orange", "magenta", "light_blue", "yellow", "lime", "pink", "gray",

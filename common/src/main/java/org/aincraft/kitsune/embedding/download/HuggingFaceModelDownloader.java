@@ -16,7 +16,7 @@ import org.aincraft.kitsune.Platform;
  * Implements retry logic with exponential backoff, streaming downloads,
  * and progress reporting.
  */
-public class HuggingFaceModelDownloader {
+public final class HuggingFaceModelDownloader {
     private static final String HF_BASE_URL = "https://huggingface.co";
     private static final int BASE_DELAY_MS = 1000;
     private static final int MAX_DELAY_MS = 30000;

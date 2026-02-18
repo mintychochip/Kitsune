@@ -8,7 +8,7 @@ import java.util.Collection;
 /**
  * Provides tags for weapons: swords, bows, crossbows, tridents, etc.
  */
-public class VanillaWeaponTagProvider implements TagProvider {
+public final class VanillaWeaponTagProvider implements TagProvider {
 
     @Override
     public void appendTags(Collection<String> tags, Item item) {

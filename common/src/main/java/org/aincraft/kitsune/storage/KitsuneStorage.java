@@ -22,7 +22,7 @@ import org.aincraft.kitsune.api.model.ContainerPath;
  * Storage coordinator between ContainerStorage (SQLite metadata) and VectorIndex (embeddings).
  * Wraps sync ContainerStorage calls in CompletableFuture for async execution.
  */
-public class KitsuneStorage {
+public final class KitsuneStorage {
     private final Logger logger;
     private final ContainerStorage containerStorage;
     private final VectorIndex vectorIndex;

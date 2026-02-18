@@ -31,10 +31,10 @@ import java.util.logging.Logger;
  * via the ContainerScanner interface.
  */
 public class ContainerIndexer {
-    protected final Logger logger;
-    protected final EmbeddingService embeddingService;
-    protected final KitsuneStorage storage;
-    protected final KitsuneConfig config;
+    private final Logger logger;
+    private final EmbeddingService embeddingService;
+    final KitsuneStorage storage;
+    private final KitsuneConfig config;
     private final ScheduledExecutorService executor = Executors.newScheduledThreadPool(2);
     private final Map<Location, ScheduledFuture<?>> pendingIndexes = new HashMap<>();
     private final int debounceDelayMs;
@@ -88,7 +88,7 @@ public class ContainerIndexer {
      * @param containerId the UUID of the container (from container management)
      * @param serializedItems the serialized items to index
      */
-    protected void performIndex(java.util.UUID containerId, List<SerializedItem> serializedItems) {
+    private void performIndex(java.util.UUID containerId, List<SerializedItem> serializedItems) {
         // Find and remove the future from pendingIndexes to prevent memory leak
         synchronized (pendingIndexes) {
             pendingIndexes.values().removeIf(ScheduledFuture::isDone);
@@ -168,7 +168,7 @@ public class ContainerIndexer {
      * @param embeddingText the text that was embedded
      * @param embedding the resulting embedding vector
      */
-    protected void logEmbeddingDiagnostics(int chunkIndex, String embeddingText, float[] embedding) {
+    private void logEmbeddingDiagnostics(int chunkIndex, String embeddingText, float[] embedding) {
         if (embedding == null || embedding.length == 0) {
             logger.warning("DIAGNOSTIC: Chunk " + chunkIndex + " has null or empty embedding!");
             return;
@@ -223,7 +223,7 @@ public class ContainerIndexer {
     /**
      * Calculates cosine similarity between two embedding vectors.
      */
-    protected float calculateCosineSimilarity(float[] vec1, float[] vec2) {
+    private float calculateCosineSimilarity(float[] vec1, float[] vec2) {
         if (vec1.length != vec2.length) {
             return 0;
         }

@@ -16,7 +16,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.logging.Level;
 import org.aincraft.kitsune.Platform;
 
-public class GoogleEmbeddingService implements EmbeddingService {
+public final class GoogleEmbeddingService implements EmbeddingService {
     private final Platform platform;
     private final String apiKey;
     private final String model;

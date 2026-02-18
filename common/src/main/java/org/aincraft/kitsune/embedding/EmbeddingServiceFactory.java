@@ -11,7 +11,7 @@ import org.aincraft.kitsune.embedding.download.ModelSpec;
 /**
  * Factory for creating EmbeddingService instances based on configuration.
  */
-public class EmbeddingServiceFactory {
+public final class EmbeddingServiceFactory {
     private EmbeddingServiceFactory() {}
 
     public static EmbeddingService create(KitsuneConfig config, Platform platform, DataSource dataSource) {

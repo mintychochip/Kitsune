@@ -8,7 +8,7 @@ import java.util.Collection;
 /**
  * Provides tags for tools: pickaxes, shovels, hoes, shears, etc.
  */
-public class VanillaToolTagProvider implements TagProvider {
+public final class VanillaToolTagProvider implements TagProvider {
 
     @Override
     public void appendTags(Collection<String> tags, Item item) {

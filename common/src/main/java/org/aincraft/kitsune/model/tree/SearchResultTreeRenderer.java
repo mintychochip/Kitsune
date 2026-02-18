@@ -26,7 +26,7 @@ import org.jetbrains.annotations.Nullable;
  *    └─ [1] Iron Ingot (78%)
  * </pre>
  */
-public class SearchResultTreeRenderer {
+public final class SearchResultTreeRenderer {
   private static final String BRANCH = "\u251C\u2500 "; // ├─
   private static final String LAST_BRANCH = "\u2514\u2500 "; // └─
   private static final String VERTICAL = "\u2502  "; // │ + 2 spaces

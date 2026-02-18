@@ -4,7 +4,7 @@ import java.util.Collection;
 import org.aincraft.kitsune.Item;
 import org.aincraft.kitsune.api.serialization.TagProvider;
 
-public class VanillaSolidBlockTagProvider implements TagProvider {
+public final class VanillaSolidBlockTagProvider implements TagProvider {
 
   @Override
   public void appendTags(Collection<String> tags, Item item) {

@@ -14,7 +14,7 @@ import java.util.logging.Logger;
  * SQLite storage for container and chunk metadata.
  * Synchronous API - wrap in CompletableFuture at call site if async needed.
  */
-public class ContainerStorage {
+public final class ContainerStorage {
 
     private final DataSource dataSource;
     private final Logger logger;

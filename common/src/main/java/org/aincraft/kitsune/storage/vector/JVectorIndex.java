@@ -46,7 +46,7 @@ import java.util.logging.Logger;
  * - OVERFLOW_FACTOR = 1.2f (tolerance for degree overflow during construction)
  * - ALPHA = 1.2f (used in distance calculations for graph pruning)
  */
-public class JVectorIndex implements VectorIndex {
+public final class JVectorIndex implements VectorIndex {
 
     private static final int GRAPH_DEGREE = 16;
     private static final int CONSTRUCTION_SEARCH_DEPTH = 100;

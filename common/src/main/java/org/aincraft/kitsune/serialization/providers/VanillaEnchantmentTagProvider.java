@@ -5,7 +5,7 @@ import java.util.Map;
 import org.aincraft.kitsune.Item;
 import org.aincraft.kitsune.api.serialization.TagProvider;
 
-public class VanillaEnchantmentTagProvider implements TagProvider {
+public final class VanillaEnchantmentTagProvider implements TagProvider {
 
   @Override
   public void appendTags(Collection<String> tags, Item item) {

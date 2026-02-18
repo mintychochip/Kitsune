@@ -8,7 +8,7 @@ import java.util.Collection;
 /**
  * Provides tags for block material types (glass, wool, wood, stone, etc).
  */
-public class VanillaBlockMaterialTagProvider implements TagProvider {
+public final class VanillaBlockMaterialTagProvider implements TagProvider {
 
   @Override
   public void appendTags(Collection<String> tags, Item item) {

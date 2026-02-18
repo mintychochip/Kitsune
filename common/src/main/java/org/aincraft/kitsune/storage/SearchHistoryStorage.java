@@ -20,7 +20,7 @@ import org.aincraft.kitsune.model.SearchHistoryEntry;
  * All operations are asynchronous and use a provided ExecutorService for execution.
  * Supports virtual threads via Executors.newVirtualThreadPerTaskExecutor() for efficient I/O.
  */
-public class SearchHistoryStorage {
+public final class SearchHistoryStorage {
     private final Logger logger;
     private final DataSource dataSource;
     private final ExecutorService executor;

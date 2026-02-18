@@ -15,7 +15,7 @@ import java.util.logging.Level;
 import org.aincraft.kitsune.Platform;
 import org.aincraft.kitsune.config.KitsuneConfig;
 
-public class OpenAIEmbeddingService implements EmbeddingService {
+public final class OpenAIEmbeddingService implements EmbeddingService {
     private final Platform platform;
     private final KitsuneConfig config;
     private final HttpClient httpClient;

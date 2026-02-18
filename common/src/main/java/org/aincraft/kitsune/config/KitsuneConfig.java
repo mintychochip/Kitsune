@@ -1,21 +1,21 @@
 package org.aincraft.kitsune.config;
 
+import java.util.function.Supplier;
 
 /**
  * Platform-agnostic configuration wrapper.
  * Uses Configuration interface for accessing configuration values via hierarchical fluent API.
  */
-public class KitsuneConfig {
+public final class KitsuneConfig {
     private final Configuration config;
 
-    // Lazily initialized nested configuration objects
+    // Lazily initialized nested configs
     private volatile EmbeddingConfig embeddingConfig;
     private volatile StorageConfig storageConfig;
     private volatile SearchConfig searchConfig;
     private volatile IndexingConfig indexingConfig;
     private volatile ProtectionConfig protectionConfig;
     private volatile CacheConfig cacheConfig;
-    private volatile ThresholdConfig thresholdConfig;
     private volatile HistoryConfig historyConfig;
     private volatile VisualizerConfig visualizerConfig;
 
@@ -23,538 +23,199 @@ public class KitsuneConfig {
         this.config = configFactory.getConfiguration();
     }
 
-    /**
-     * Access embedding configuration settings.
-     */
-    public EmbeddingConfig embedding() {
-        if (embeddingConfig == null) {
+    public EmbeddingConfig embedding() { return lazy(() -> embeddingConfig, v -> embeddingConfig = v, () -> new EmbeddingConfig(config)); }
+    public StorageConfig storage() { return lazy(() -> storageConfig, v -> storageConfig = v, () -> new StorageConfig(config)); }
+    public SearchConfig search() { return lazy(() -> searchConfig, v -> searchConfig = v, () -> new SearchConfig(config)); }
+    public IndexingConfig indexing() { return lazy(() -> indexingConfig, v -> indexingConfig = v, () -> new IndexingConfig(config)); }
+    public ProtectionConfig protection() { return lazy(() -> protectionConfig, v -> protectionConfig = v, () -> new ProtectionConfig(config)); }
+    public CacheConfig cache() { return lazy(() -> cacheConfig, v -> cacheConfig = v, () -> new CacheConfig(config)); }
+    public HistoryConfig history() { return lazy(() -> historyConfig, v -> historyConfig = v, () -> new HistoryConfig(config)); }
+    public VisualizerConfig visualizer() { return lazy(() -> visualizerConfig, v -> visualizerConfig = v, () -> new VisualizerConfig(config)); }
+
+    private <T> T lazy(Supplier<T> getter, java.util.function.Consumer<T> setter, Supplier<T> factory) {
+        T value = getter.get();
+        if (value == null) {
             synchronized (this) {
-                if (embeddingConfig == null) {
-                    embeddingConfig = new EmbeddingConfig(config);
+                value = getter.get();
+                if (value == null) {
+                    value = factory.get();
+                    setter.accept(value);
                 }
             }
         }
-        return embeddingConfig;
+        return value;
     }
 
-    /**
-     * Access storage configuration settings.
-     */
-    public StorageConfig storage() {
-        if (storageConfig == null) {
-            synchronized (this) {
-                if (storageConfig == null) {
-                    storageConfig = new StorageConfig(config);
-                }
-            }
-        }
-        return storageConfig;
-    }
+    // ==================== EMBEDDING CONFIG ====================
 
-    /**
-     * Access search configuration settings.
-     */
-    public SearchConfig search() {
-        if (searchConfig == null) {
-            synchronized (this) {
-                if (searchConfig == null) {
-                    searchConfig = new SearchConfig(config);
-                }
-            }
-        }
-        return searchConfig;
-    }
-
-    /**
-     * Access indexing configuration settings.
-     */
-    public IndexingConfig indexing() {
-        if (indexingConfig == null) {
-            synchronized (this) {
-                if (indexingConfig == null) {
-                    indexingConfig = new IndexingConfig(config);
-                }
-            }
-        }
-        return indexingConfig;
-    }
-
-    /**
-     * Access protection configuration settings.
-     */
-    public ProtectionConfig protection() {
-        if (protectionConfig == null) {
-            synchronized (this) {
-                if (protectionConfig == null) {
-                    protectionConfig = new ProtectionConfig(config);
-                }
-            }
-        }
-        return protectionConfig;
-    }
-
-    /**
-     * Access cache configuration settings.
-     */
-    public CacheConfig cache() {
-        if (cacheConfig == null) {
-            synchronized (this) {
-                if (cacheConfig == null) {
-                    cacheConfig = new CacheConfig(config);
-                }
-            }
-        }
-        return cacheConfig;
-    }
-
-    /**
-     * Access threshold configuration settings.
-     */
-    public ThresholdConfig threshold() {
-        if (thresholdConfig == null) {
-            synchronized (this) {
-                if (thresholdConfig == null) {
-                    thresholdConfig = new ThresholdConfig(config);
-                }
-            }
-        }
-        return thresholdConfig;
-    }
-
-    /**
-     * Access history configuration settings.
-     */
-    public HistoryConfig history() {
-        if (historyConfig == null) {
-            synchronized (this) {
-                if (historyConfig == null) {
-                    historyConfig = new HistoryConfig(config);
-                }
-            }
-        }
-        return historyConfig;
-    }
-
-    /**
-     * Access visualizer configuration settings.
-     */
-    public VisualizerConfig visualizer() {
-        if (visualizerConfig == null) {
-            synchronized (this) {
-                if (visualizerConfig == null) {
-                    visualizerConfig = new VisualizerConfig(config);
-                }
-            }
-        }
-        return visualizerConfig;
-    }
-
-    /**
-     * Embedding configuration accessor.
-     * Model-based configuration: infers provider from model name.
-     */
     public static class EmbeddingConfig {
+        private static final String MODEL = "embedding.model";
+        private static final String API_KEY = "embedding.api-key";
+        private static final String AUTO_DOWNLOAD = "embedding.auto-download";
+        private static final String REPOSITORY = "embedding.repository";
+        private static final String MODEL_PATH = "embedding.model-path";
+        private static final String TOKENIZER_PATH = "embedding.tokenizer-path";
+        private static final String DOWNLOAD_RETRIES = "embedding.download-retries";
+        private static final String DOWNLOAD_TIMEOUT = "embedding.download-timeout-seconds";
+
+        private static final String DEFAULT_MODEL = "nomic-embed-text-v1.5";
+
         private final Configuration config;
-        private volatile OnnxConfig onnxConfig;
 
-        EmbeddingConfig(Configuration config) {
-            this.config = config;
-        }
+        EmbeddingConfig(Configuration config) { this.config = config; }
 
-        /**
-         * Gets model name for the embedding service.
-         * Defaults to "nomic-embed-text-v1.5" if not configured.
-         */
-        public String model() {
-            String configuredModel = config.getString("embedding.model", "");
-            return !configuredModel.isEmpty() ? configuredModel : "nomic-embed-text-v1.5";
-        }
+        public String model() { return config.getString(MODEL, DEFAULT_MODEL); }
 
-        /**
-         * Infers the provider from the model name.
-         *
-         * - Models starting with "text-embedding-" → "openai"
-         * - Models starting with "embedding-" or containing "gecko" → "google"
-         * - "nomic-embed-text-v1.5" → "onnx"
-         * - "all-MiniLM-L6-v2" or "all-minilm" → "onnx"
-         * - "bge-m3" → "onnx"
-         * - Default → "onnx"
-         */
-        public String inferProvider(String model) {
-            String lowerModel = model.toLowerCase();
-
-            // OpenAI models
-            if (lowerModel.startsWith("text-embedding-")) {
-                return "openai";
-            }
-
-            // Google models
-            if (lowerModel.startsWith("embedding-") || lowerModel.contains("gecko")) {
-                return "google";
-            }
-
-            // All others default to ONNX (local models)
+        public String provider() {
+            String model = model().toLowerCase();
+            if (model.startsWith("text-embedding-")) return "openai";
+            if (model.startsWith("embedding-") || model.contains("gecko")) return "google";
             return "onnx";
         }
 
-        /**
-         * Gets the provider for the configured model.
-         */
-        public String provider() {
-            return inferProvider(model());
-        }
-
-        /**
-         * Returns whether the configured provider requires an API key.
-         */
         public boolean requiresApiKey() {
-            String provider = provider();
-            return "openai".equals(provider) || "google".equals(provider);
+            String p = provider();
+            return "openai".equals(p) || "google".equals(p);
         }
 
-        /**
-         * Gets API key for providers that require it (OpenAI/Google).
-         * Returns empty string for local providers.
-         */
-        public String apiKey() {
-            return config.getString("embedding.api-key", "");
-        }
-
-        public OnnxConfig onnx() {
-            if (onnxConfig == null) {
-                synchronized (this) {
-                    if (onnxConfig == null) {
-                        onnxConfig = new OnnxConfig(config);
-                    }
-                }
-            }
-            return onnxConfig;
-        }
+        public String apiKey() { return config.getString(API_KEY, ""); }
+        public boolean autoDownload() { return config.getBoolean(AUTO_DOWNLOAD, true); }
+        public String repository() { return config.getString(REPOSITORY, ""); }
+        public String modelPath() { return config.getString(MODEL_PATH, ""); }
+        public String tokenizerPath() { return config.getString(TOKENIZER_PATH, ""); }
+        public int downloadRetries() { return config.getInt(DOWNLOAD_RETRIES, 3); }
+        public int downloadTimeoutSeconds() { return config.getInt(DOWNLOAD_TIMEOUT, 300); }
     }
 
-    /**
-     * ONNX embedding configuration accessor.
-     * Handles local embedding models (nomic, allminilm, bgem3, onnx).
-     */
-    public static class OnnxConfig {
-        private final Configuration config;
+    // ==================== STORAGE CONFIG ====================
 
-        OnnxConfig(Configuration config) {
-            this.config = config;
-        }
-
-        /**
-         * Gets the model name for ONNX embedding.
-         * Returns configured model or provider-specific default.
-         */
-        public String model() {
-            String configuredModel = config.getString("embedding.model", "");
-            if (!configuredModel.isEmpty()) {
-                return configuredModel;
-            }
-
-            // Return provider-specific default based on provider setting
-            String provider = config.getString("embedding.provider", "onnx");
-            return switch (provider) {
-                case "nomic" -> "nomic-embed-text-v1.5";
-                case "allminilm" -> "all-MiniLM-L6-v2";
-                case "bgem3" -> "bge-m3";
-                case "onnx" -> "nomic-embed-text-v1.5";
-                default -> "nomic-embed-text-v1.5";
-            };
-        }
-
-        public boolean autoDownload() {
-            return config.getBoolean("embedding.auto-download", true);
-        }
-
-        public String repository() {
-            return config.getString("embedding.repository", "");
-        }
-
-        public String modelPath() {
-            return config.getString("embedding.model-path", "");
-        }
-
-        public String tokenizerPath() {
-            return config.getString("embedding.tokenizer-path", "");
-        }
-
-        public int downloadRetries() {
-            return config.getInt("embedding.download-retries", 3);
-        }
-
-        public int downloadTimeoutSeconds() {
-            return config.getInt("embedding.download-timeout-seconds", 300);
-        }
-    }
-
-    /**
-     * Storage configuration accessor.
-     */
     public static class StorageConfig {
-        private final Configuration config;
-        private volatile SqliteConfig sqliteConfig;
+        private static final String VECTOR_PROVIDER = "storage.vector-provider";
+        private static final String METADATA_PROVIDER = "storage.metadata-provider";
+        private static final String METADATA_HOST = "storage.metadata-host";
+        private static final String METADATA_PORT = "storage.metadata-port";
+        private static final String METADATA_DATABASE = "storage.metadata-database";
+        private static final String METADATA_USERNAME = "storage.metadata-username";
+        private static final String METADATA_PASSWORD = "storage.metadata-password";
+        private static final String MILVUS_HOST = "storage.milvus-host";
+        private static final String MILVUS_PORT = "storage.milvus-port";
+        private static final String MILVUS_COLLECTION = "storage.milvus-collection";
+        private static final String SQLITE_PATH = "storage.sqlite.path";
 
-        StorageConfig(Configuration config) {
-            this.config = config;
-        }
-
-        public String provider() {
-            return config.getString("storage.provider", "sqlite");
-        }
-
-        /**
-         * Gets the vector index provider: "jvector" (local) or "milvus" (remote)
-         */
-        public String vectorProvider() {
-            return config.getString("storage.vector-provider", "jvector");
-        }
-
-        /**
-         * Gets the metadata storage provider: "sqlite", "postgresql", or "mysql"
-         */
-        public String metadataProvider() {
-            return config.getString("storage.metadata-provider", "sqlite");
-        }
-
-        // Remote database settings (for postgresql/mysql)
-
-        public String metadataHost() {
-            return config.getString("storage.metadata-host", "localhost");
-        }
-
-        public int metadataPort() {
-            return config.getInt("storage.metadata-port", 5432);
-        }
-
-        public String metadataDatabase() {
-            return config.getString("storage.metadata-database", "kitsune");
-        }
-
-        public String metadataUsername() {
-            return config.getString("storage.metadata-username", "");
-        }
-
-        public String metadataPassword() {
-            return config.getString("storage.metadata-password", "");
-        }
-
-        // Milvus settings
-
-        public String milvusHost() {
-            return config.getString("storage.milvus-host", "localhost");
-        }
-
-        public int milvusPort() {
-            return config.getInt("storage.milvus-port", 19530);
-        }
-
-        public String milvusCollection() {
-            return config.getString("storage.milvus-collection", "kitsune_vectors");
-        }
-
-        public SqliteConfig sqlite() {
-            if (sqliteConfig == null) {
-                synchronized (this) {
-                    if (sqliteConfig == null) {
-                        sqliteConfig = new SqliteConfig(config);
-                    }
-                }
-            }
-            return sqliteConfig;
-        }
-    }
-
-    /**
-     * SQLite storage configuration accessor.
-     */
-    public static class SqliteConfig {
         private final Configuration config;
 
-        SqliteConfig(Configuration config) {
-            this.config = config;
-        }
+        StorageConfig(Configuration config) { this.config = config; }
 
-        public String path() {
-            return config.getString("storage.sqlite.path", "kitsune.db");
-        }
+        public String vectorProvider() { return config.getString(VECTOR_PROVIDER, "jvector"); }
+        public String metadataProvider() { return config.getString(METADATA_PROVIDER, "sqlite"); }
+        public String metadataHost() { return config.getString(METADATA_HOST, "localhost"); }
+        public int metadataPort() { return config.getInt(METADATA_PORT, 5432); }
+        public String metadataDatabase() { return config.getString(METADATA_DATABASE, "kitsune"); }
+        public String metadataUsername() { return config.getString(METADATA_USERNAME, ""); }
+        public String metadataPassword() { return config.getString(METADATA_PASSWORD, ""); }
+        public String milvusHost() { return config.getString(MILVUS_HOST, "localhost"); }
+        public int milvusPort() { return config.getInt(MILVUS_PORT, 19530); }
+        public String milvusCollection() { return config.getString(MILVUS_COLLECTION, "kitsune_vectors"); }
+        public String sqlitePath() { return config.getString(SQLITE_PATH, "kitsune.db"); }
     }
 
-    /**
-     * Search configuration accessor.
-     */
+    // ==================== SEARCH CONFIG ====================
+
     public static class SearchConfig {
+        private static final String DEFAULT_LIMIT = "search.default-limit";
+        private static final String MAX_LIMIT = "search.max-limit";
+        private static final String RADIUS = "search.radius";
+        private static final String THRESHOLD = "search.threshold";
+
         private final Configuration config;
 
-        SearchConfig(Configuration config) {
-            this.config = config;
-        }
+        SearchConfig(Configuration config) { this.config = config; }
 
-        public int defaultLimit() {
-            return config.getInt("search.default-limit", 10);
-        }
-
-        public int maxLimit() {
-            return config.getInt("search.max-limit", 50);
-        }
-
-        public int getSearchRadius() {
-            return config.getInt("search.radius", 500);
-        }
+        public int defaultLimit() { return config.getInt(DEFAULT_LIMIT, 10); }
+        public int maxLimit() { return config.getInt(MAX_LIMIT, 50); }
+        public int radius() { return config.getInt(RADIUS, 500); }
+        public double threshold() { return config.getDouble(THRESHOLD, 0.7); }
     }
 
-    /**
-     * Indexing configuration accessor.
-     */
+    // ==================== INDEXING CONFIG ====================
+
     public static class IndexingConfig {
+        private static final String DEBOUNCE_DELAY = "indexing.debounce-delay-ms";
+        private static final String HOPPER_TRANSFERS = "indexing.hopper-transfers";
+        private static final String HOPPER_MINECART = "indexing.hopper-minecart-deposits";
+
         private final Configuration config;
 
-        IndexingConfig(Configuration config) {
-            this.config = config;
-        }
+        IndexingConfig(Configuration config) { this.config = config; }
 
-        public int debounceDelayMs() {
-            return config.getInt("indexing.debounce-delay-ms", 2000);
-        }
-
-        public boolean hopperTransfersEnabled() {
-            return config.getBoolean("indexing.hopper-transfers", true);
-        }
-
-        public boolean hopperMinecartDepositsEnabled() {
-            return config.getBoolean("indexing.hopper-minecart-deposits", true);
-        }
+        public int debounceDelayMs() { return config.getInt(DEBOUNCE_DELAY, 2000); }
+        public boolean hopperTransfersEnabled() { return config.getBoolean(HOPPER_TRANSFERS, true); }
+        public boolean hopperMinecartDepositsEnabled() { return config.getBoolean(HOPPER_MINECART, true); }
     }
 
-    /**
-     * Protection configuration accessor.
-     */
+    // ==================== PROTECTION CONFIG ====================
+
     public static class ProtectionConfig {
+        private static final String PLUGIN = "protection.plugin";
+        private static final String ENABLED = "protection.enabled";
+
         private final Configuration config;
 
-        ProtectionConfig(Configuration config) {
-            this.config = config;
-        }
+        ProtectionConfig(Configuration config) { this.config = config; }
 
-        public String plugin() {
-            return config.getString("protection.plugin", "auto");
-        }
-
-        public boolean enabled() {
-            return config.getBoolean("protection.enabled", true);
-        }
+        public String plugin() { return config.getString(PLUGIN, "auto"); }
+        public boolean enabled() { return config.getBoolean(ENABLED, true); }
     }
 
-    /**
-     * Cache configuration accessor.
-     */
+    // ==================== CACHE CONFIG ====================
+
     public static class CacheConfig {
+        private static final String PERSISTENT = "cache.persistent";
+        private static final String MAX_SIZE = "cache.max-size";
+
         private final Configuration config;
 
-        CacheConfig(Configuration config) {
-            this.config = config;
-        }
+        CacheConfig(Configuration config) { this.config = config; }
 
-        public boolean persistent() {
-            return config.getBoolean("cache.persistent", true);
-        }
-
-        public int maxSize() {
-            return config.getInt("cache.max-size", 10000);
-        }
+        public boolean persistent() { return config.getBoolean(PERSISTENT, true); }
+        public int maxSize() { return config.getInt(MAX_SIZE, 10000); }
     }
 
-    /**
-     * Threshold configuration accessor.
-     */
-    public static class ThresholdConfig {
-        private final Configuration config;
+    // ==================== HISTORY CONFIG ====================
 
-        ThresholdConfig(Configuration config) {
-            this.config = config;
-        }
-
-        public double defaultThreshold() {
-            return config.getDouble("search.threshold", 0.7);
-        }
-    }
-
-    /**
-     * History configuration accessor.
-     */
     public static class HistoryConfig {
+        private static final String ENABLED = "history.enabled";
+        private static final String MAX_PER_PLAYER = "history.max-entries-per-player";
+        private static final String MAX_GLOBAL = "history.max-global-entries";
+        private static final String RETENTION_DAYS = "history.retention-days";
+
         private final Configuration config;
 
-        HistoryConfig(Configuration config) {
-            this.config = config;
-        }
+        HistoryConfig(Configuration config) { this.config = config; }
 
-        public boolean enabled() {
-            return config.getBoolean("history.enabled", true);
-        }
-
-        public int maxEntriesPerPlayer() {
-            return config.getInt("history.max-entries-per-player", 50);
-        }
-
-        public int maxGlobalEntries() {
-            return config.getInt("history.max-global-entries", 500);
-        }
-
-        public int retentionDays() {
-            return config.getInt("history.retention-days", 30);
-        }
+        public boolean enabled() { return config.getBoolean(ENABLED, true); }
+        public int maxEntriesPerPlayer() { return config.getInt(MAX_PER_PLAYER, 50); }
+        public int maxGlobalEntries() { return config.getInt(MAX_GLOBAL, 500); }
+        public int retentionDays() { return config.getInt(RETENTION_DAYS, 30); }
     }
 
-    /**
-     * Visualizer configuration accessor.
-     */
+    // ==================== VISUALIZER CONFIG ====================
+
     public static class VisualizerConfig {
+        private static final String ITEM_DISPLAY_COUNT = "visualizer.item-display-count";
+        private static final String DISPLAY_HEIGHT = "visualizer.display-height";
+        private static final String DISPLAY_RADIUS = "visualizer.display-radius";
+        private static final String DISPLAY_DURATION = "visualizer.display-duration-ticks";
+        private static final String ITEM_DISPLAY_ENABLED = "visualizer.item-display-enabled";
+
         private final Configuration config;
 
-        VisualizerConfig(Configuration config) {
-            this.config = config;
-        }
+        VisualizerConfig(Configuration config) { this.config = config; }
 
-        /**
-         * Gets the number of items to display using ItemDisplay entities.
-         * Default is 6 if not configured.
-         */
-        public int itemDisplayCount() {
-            return config.getInt("visualizer.item-display-count", 6);
-        }
-
-        /**
-         * Gets the height above containers where ItemDisplay entities are spawned.
-         * Default is 2.0 blocks.
-         */
-        public double displayHeight() {
-            return config.getDouble("visualizer.display-height", 2.0);
-        }
-
-        /**
-         * Gets the radius of the arc where ItemDisplay entities are positioned.
-         * Default is 1.0 block.
-         */
-        public double displayRadius() {
-            return config.getDouble("visualizer.display-radius", 1.0);
-        }
-
-        /**
-         * Gets the duration in ticks that ItemDisplay entities should remain visible.
-         * Default is 200 ticks (10 seconds).
-         */
-        public int displayDurationTicks() {
-            return config.getInt("visualizer.display-duration-ticks", 200);
-        }
-
-        /**
-         * Whether to enable ItemDisplay visualization.
-         * Default is true.
-         */
-        public boolean itemDisplayEnabled() {
-            return config.getBoolean("visualizer.item-display-enabled", true);
-        }
+        public int itemDisplayCount() { return config.getInt(ITEM_DISPLAY_COUNT, 6); }
+        public double displayHeight() { return config.getDouble(DISPLAY_HEIGHT, 2.0); }
+        public double displayRadius() { return config.getDouble(DISPLAY_RADIUS, 1.0); }
+        public int displayDurationTicks() { return config.getInt(DISPLAY_DURATION, 200); }
+        public boolean itemDisplayEnabled() { return config.getBoolean(ITEM_DISPLAY_ENABLED, true); }
     }
 }
