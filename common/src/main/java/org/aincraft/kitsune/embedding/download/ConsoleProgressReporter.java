@@ -1,5 +1,7 @@
 package org.aincraft.kitsune.embedding.download;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.logging.Logger;
 
 /**
@@ -8,8 +10,8 @@ import java.util.logging.Logger;
  */
 public class ConsoleProgressReporter implements DownloadProgressListener {
     private final Logger logger;
-    private long lastReportTime = 0;
-    private static final long REPORT_INTERVAL_MS = 2000;
+    private Instant lastReportTime = Instant.EPOCH;
+    private static final Duration REPORT_INTERVAL = Duration.ofSeconds(2);
 
     public ConsoleProgressReporter(Logger logger) {
         this.logger = logger;
@@ -18,13 +20,13 @@ public class ConsoleProgressReporter implements DownloadProgressListener {
     @Override
     public void onStart(String filename, long totalBytes) {
         logger.info(String.format("Downloading %s (%s)...", filename, formatBytes(totalBytes)));
-        lastReportTime = System.currentTimeMillis();
+        lastReportTime = Instant.now();
     }
 
     @Override
     public void onProgress(String filename, long bytesDownloaded, long totalBytes, int percentComplete) {
-        long now = System.currentTimeMillis();
-        if (now - lastReportTime >= REPORT_INTERVAL_MS) {
+        Instant now = Instant.now();
+        if (Duration.between(lastReportTime, now).compareTo(REPORT_INTERVAL) >= 0) {
             logger.info(String.format("[%s] %d%% (%s / %s)",
                 filename, percentComplete, formatBytes(bytesDownloaded), formatBytes(totalBytes)));
             lastReportTime = now;

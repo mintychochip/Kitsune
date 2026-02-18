@@ -85,7 +85,7 @@ public class OnnxEmbeddingService implements EmbeddingService {
         initializeDownloader();
         DownloadProgressListener listener = new ConsoleProgressReporter(platform.getLogger());
 
-        CompletableFuture<Void> downloadFuture = downloader.downloadModel(spec, modelsDir, listener);
+        CompletableFuture<Void> downloadFuture = downloader.downloadModel(spec, listener);
 
         // Also download external data file if needed
         if (spec.requiresExternalData()) {
@@ -102,8 +102,11 @@ public class OnnxEmbeddingService implements EmbeddingService {
     }
 
     private void initializeDownloader() {
-        var httpClient = HttpClientFactory.create();
-        downloader = new HuggingFaceModelDownloader(httpClient, platform.getLogger(), 3);
+        var httpClient = java.net.http.HttpClient.newBuilder()
+            .connectTimeout(java.time.Duration.ofSeconds(30))
+            .followRedirects(java.net.http.HttpClient.Redirect.NORMAL)
+            .build();
+        downloader = new HuggingFaceModelDownloader(platform, httpClient, 3, executor);
     }
 
     private CompletableFuture<Void> doInitialize() {
@@ -359,9 +362,6 @@ public class OnnxEmbeddingService implements EmbeddingService {
 
     @Override
     public void shutdown() {
-        if (downloader != null) {
-            downloader.shutdown();
-        }
         if (session != null) {
             try { session.close(); }
             catch (Exception e) { platform.getLogger().log(Level.WARNING, "Failed to close ONNX session", e); }

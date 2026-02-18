@@ -5,10 +5,11 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.file.*;
-import java.util.concurrent.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutorService;
 import java.util.logging.Level;
-import java.util.logging.Logger;
-import java.time.Instant;
+import org.aincraft.kitsune.Platform;
 
 /**
  * Downloads ONNX models and tokenizers from Hugging Face using JDK HttpClient.
@@ -22,39 +23,39 @@ public class HuggingFaceModelDownloader {
     private static final int BUFFER_SIZE = 8192;
     private static final String TEMP_SUFFIX = ".downloading";
 
+    private final Platform platform;
     private final HttpClient httpClient;
-    private final Logger logger;
     private final int maxRetries;
     private final ExecutorService executor;
+    private final Path modelsDir;
 
-    public HuggingFaceModelDownloader(HttpClient httpClient, Logger logger, int maxRetries) {
+    public HuggingFaceModelDownloader(Platform platform, HttpClient httpClient, int maxRetries, ExecutorService executor) {
+        this.platform = platform;
         this.httpClient = httpClient;
-        this.logger = logger;
         this.maxRetries = maxRetries;
-        this.executor = Executors.newVirtualThreadPerTaskExecutor();
+        this.executor = executor;
+        this.modelsDir = platform.getDataFolder().resolve("models");
     }
 
     /**
      * Downloads a complete model (both model file and tokenizer) asynchronously.
      *
      * @param spec Model specification with HuggingFace repo and paths
-     * @param modelsDir Directory to store downloaded files
      * @param listener Progress listener for download events
      * @return CompletableFuture completing when both files are downloaded
      */
     public CompletableFuture<Void> downloadModel(
         ModelSpec spec,
-        Path modelsDir,
         DownloadProgressListener listener
     ) {
         return CompletableFuture.supplyAsync(() -> {
             try {
                 // Create models directory if needed
                 Files.createDirectories(modelsDir);
-                logger.info("Starting download of model: " + spec.modelName());
+                platform.getLogger().info("Starting download of model: " + spec.modelName());
                 return modelsDir;
             } catch (IOException e) {
-                logger.log(Level.SEVERE, "Failed to create models directory", e);
+                platform.getLogger().log(Level.SEVERE, "Failed to create models directory", e);
                 throw new CompletionException(e);
             }
         }, executor).thenCompose(dir -> {
@@ -82,7 +83,7 @@ public class HuggingFaceModelDownloader {
 
             // Wait for both downloads to complete
             return CompletableFuture.allOf(modelDownload, tokenizerDownload)
-                .thenRun(() -> logger.info("Successfully downloaded model: " + spec.modelName()));
+                .thenRun(() -> platform.getLogger().info("Successfully downloaded model: " + spec.modelName()));
         });
     }
 
@@ -103,7 +104,7 @@ public class HuggingFaceModelDownloader {
     ) {
         String url = buildDownloadUrl(repoId, filePath);
         String filename = destination.getFileName().toString();
-        logger.info("Downloading " + filename + " from " + url);
+        platform.getLogger().info("Downloading " + filename + " from " + url);
         return downloadWithRetry(url, destination, filename, listener, 0);
     }
 
@@ -120,7 +121,7 @@ public class HuggingFaceModelDownloader {
         int attempt
     ) {
         if (attempt > maxRetries) {
-            logger.severe("Download failed after " + maxRetries + " retries: " + filename);
+            platform.getLogger().severe("Download failed after " + maxRetries + " retries: " + filename);
             return CompletableFuture.failedFuture(
                 new IOException("Download failed after " + maxRetries + " retries")
             );
@@ -130,7 +131,7 @@ public class HuggingFaceModelDownloader {
         if (attempt == 0) {
             return doDownload(url, destination, filename, listener)
                 .exceptionally(e -> {
-                    logger.log(Level.WARNING, "Download attempt 1 failed for " + filename, e);
+                    platform.getLogger().log(Level.WARNING, "Download attempt 1 failed for " + filename, e);
                     listener.onError(filename, (Exception) e);
                     // Chain to retry with backoff
                     throw new CompletionException(e);
@@ -138,7 +139,7 @@ public class HuggingFaceModelDownloader {
                 .exceptionallyCompose(ex -> {
                     int nextAttempt = attempt + 1;
                     long delayMs = calculateBackoffDelay(nextAttempt);
-                    logger.info("Retrying download of " + filename + " in " + delayMs + "ms (attempt " + (nextAttempt + 1) + ")");
+                    platform.getLogger().info("Retrying download of " + filename + " in " + delayMs + "ms (attempt " + (nextAttempt + 1) + ")");
 
                     // Use virtual thread for delay-then-retry, avoiding scheduled executor
                     return CompletableFuture.supplyAsync(
@@ -152,14 +153,14 @@ public class HuggingFaceModelDownloader {
             .exceptionallyCompose(ex -> {
                 int nextAttempt = attempt + 1;
                 if (nextAttempt > maxRetries) {
-                    logger.severe("Download failed after " + maxRetries + " retries: " + filename);
+                    platform.getLogger().severe("Download failed after " + maxRetries + " retries: " + filename);
                     return CompletableFuture.failedFuture(
                         new IOException("Download failed after " + maxRetries + " retries", (Throwable) ex)
                     );
                 }
 
                 long delayMs = calculateBackoffDelay(nextAttempt);
-                logger.info("Retrying download of " + filename + " in " + delayMs + "ms (attempt " + (nextAttempt + 1) + ")");
+                platform.getLogger().info("Retrying download of " + filename + " in " + delayMs + "ms (attempt " + (nextAttempt + 1) + ")");
                 listener.onError(filename, (Exception) ex);
 
                 // Use virtual thread for delay-then-retry, avoiding scheduled executor
@@ -185,7 +186,7 @@ public class HuggingFaceModelDownloader {
         try {
             Thread.sleep(delayMs);
         } catch (InterruptedException e) {
-            logger.log(Level.WARNING, "Sleep interrupted during backoff for " + filename, e);
+            platform.getLogger().log(Level.WARNING, "Sleep interrupted during backoff for " + filename, e);
             Thread.currentThread().interrupt();
             return CompletableFuture.failedFuture(e);
         }
@@ -258,7 +259,7 @@ public class HuggingFaceModelDownloader {
                 // Atomic move from temp to destination
                 Files.move(tempFile, destination, StandardCopyOption.REPLACE_EXISTING);
 
-                logger.info("Successfully downloaded " + filename);
+                platform.getLogger().info("Successfully downloaded " + filename);
                 listener.onComplete(filename);
 
                 return destination;
@@ -267,7 +268,7 @@ public class HuggingFaceModelDownloader {
                 try {
                     Files.deleteIfExists(tempFile);
                 } catch (IOException cleanupError) {
-                    logger.log(Level.WARNING, "Failed to clean up temp file: " + tempFile, cleanupError);
+                    platform.getLogger().log(Level.WARNING, "Failed to clean up temp file: " + tempFile, cleanupError);
                 }
 
                 throw new CompletionException(e);
@@ -296,20 +297,4 @@ public class HuggingFaceModelDownloader {
         return String.format("%s/%s/resolve/main/%s", HF_BASE_URL, repoId, filename);
     }
 
-    /**
-     * Gracefully shuts down the executor service.
-     */
-    public void shutdown() {
-        executor.shutdown();
-        try {
-            if (!executor.awaitTermination(10, TimeUnit.SECONDS)) {
-                executor.shutdownNow();
-                logger.warning("Executor did not terminate within timeout");
-            }
-        } catch (InterruptedException e) {
-            executor.shutdownNow();
-            Thread.currentThread().interrupt();
-            logger.log(Level.WARNING, "Interrupted while shutting down executor", e);
-        }
-    }
 }

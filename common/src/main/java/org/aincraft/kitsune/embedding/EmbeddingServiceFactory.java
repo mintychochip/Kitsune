@@ -1,5 +1,6 @@
 package org.aincraft.kitsune.embedding;
 
+import javax.sql.DataSource;
 import org.aincraft.kitsune.Platform;
 import org.aincraft.kitsune.cache.EmbeddingCache;
 import org.aincraft.kitsune.cache.LayeredEmbeddingCache;
@@ -13,7 +14,7 @@ import org.aincraft.kitsune.embedding.download.ModelSpec;
 public class EmbeddingServiceFactory {
     private EmbeddingServiceFactory() {}
 
-    public static EmbeddingService create(KitsuneConfig config, Platform platform) {
+    public static EmbeddingService create(KitsuneConfig config, Platform platform, DataSource dataSource) {
         String provider = config.embedding().provider();
         String model = config.embedding().model();
 
@@ -38,7 +39,7 @@ public class EmbeddingServiceFactory {
         };
 
         // Wrap with caching
-        EmbeddingCache cache = createCache(provider, config, platform);
+        EmbeddingCache cache = new LayeredEmbeddingCache(dataSource, platform.getLogger());
         return new CachedEmbeddingService(platform, baseService, cache);
     }
 
@@ -52,11 +53,5 @@ public class EmbeddingServiceFactory {
         platform.getLogger().info("Creating ONNX embedding service for: " + spec.modelName() +
                    " (" + spec.dimension() + "d, strategy: " + spec.taskPrefixStrategy() + ")");
         return new OnnxEmbeddingService(platform, spec);
-    }
-
-    private static EmbeddingCache createCache(String provider, KitsuneConfig config, Platform platform) {
-        int maxCacheSize = config.cache().maxSize();
-        String cachePath = platform.getDataFolder().resolve("embedding_cache.db").toString();
-        return new LayeredEmbeddingCache(platform.getLogger(), cachePath, maxCacheSize);
     }
 }

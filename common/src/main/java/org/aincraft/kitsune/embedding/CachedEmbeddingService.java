@@ -135,7 +135,7 @@ public class CachedEmbeddingService implements EmbeddingService {
 
     @Override
     public CompletableFuture<Void> initialize() {
-        return cache.initialize()
+        return cache.initializeAsync()
                 .thenCompose(v -> delegate.initialize());
     }
 

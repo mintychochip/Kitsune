@@ -28,7 +28,7 @@ public interface EmbeddingCache {
     /**
      * Initialize the cache.
      */
-    CompletableFuture<Void> initialize();
+    CompletableFuture<Void> initializeAsync();
 
     /**
      * Shutdown and release resources.

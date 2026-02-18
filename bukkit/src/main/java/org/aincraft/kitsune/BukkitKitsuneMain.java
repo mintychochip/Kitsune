@@ -135,11 +135,9 @@ public final class BukkitKitsuneMain extends JavaPlugin {
 
     private CompletableFuture<Void> initializeServicesAsync() {
         return CompletableFuture.supplyAsync(() -> {
-            this.embeddingService = EmbeddingServiceFactory.create(kitsuneConfig, platformPlugin);
             Path dataDir = platformPlugin.getDataFolder();
-            int dimension = embeddingService.getDimension();
 
-            // Create shared DataSource
+            // Create shared DataSource first
             Path dbFile = dataDir.resolve("kitsune.db");
             HikariConfig hikariConfig = new HikariConfig();
             hikariConfig.setJdbcUrl("jdbc:sqlite:" + dbFile.toAbsolutePath());
@@ -147,6 +145,10 @@ public final class BukkitKitsuneMain extends JavaPlugin {
             hikariConfig.setMaximumPoolSize(1);
             hikariConfig.setLeakDetectionThreshold(30000);
             HikariDataSource dataSource = new HikariDataSource(hikariConfig);
+
+            // Create embedding service with shared DataSource
+            this.embeddingService = EmbeddingServiceFactory.create(kitsuneConfig, platformPlugin, dataSource);
+            int dimension = embeddingService.getDimension();
 
             ContainerStorage containerStorage = new ContainerStorage(dataSource, getLogger());
             JVectorIndex vectorIndex = new JVectorIndex(getLogger(), dataDir, dimension);
