@@ -17,6 +17,7 @@ import org.aincraft.kitsune.api.model.ContainerNode;
 import org.aincraft.kitsune.api.serialization.TagProviderRegistry;
 import org.aincraft.kitsune.model.SearchHistoryEntry;
 import org.aincraft.kitsune.config.BukkitConfigurationFactory;
+import org.aincraft.kitsune.config.KitsuneConfigInterface;
 import org.aincraft.kitsune.config.KitsuneConfig;
 import org.aincraft.kitsune.storage.SearchHistoryStorage;
 import org.aincraft.kitsune.embedding.CachedEmbeddingService;
@@ -59,162 +60,113 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
 
+import com.google.inject.Guice;
+import com.google.inject.Injector;
+import com.google.inject.Key;
+import com.google.inject.TypeLiteral;
+import jakarta.inject.Inject;
+import org.aincraft.kitsune.di.PluginModule;
+import org.aincraft.kitsune.di.ConfigModule;
+import org.aincraft.kitsune.di.PlatformModule;
+import org.aincraft.kitsune.di.SerializationModule;
+import org.aincraft.kitsune.di.CacheModule;
+import org.aincraft.kitsune.di.StorageModule;
+import org.aincraft.kitsune.di.EmbeddingModule;
+import org.aincraft.kitsune.di.IndexerModule;
+import org.aincraft.kitsune.di.ProtectionModule;
+import org.aincraft.kitsune.di.HistoryModule;
+import org.aincraft.kitsune.di.VisualizerModule;
+import org.aincraft.kitsune.di.ListenerModule;
+import org.aincraft.kitsune.di.MetadataModule;
+import org.aincraft.kitsune.di.ServiceInitializationService;
+import org.aincraft.kitsune.di.ShutdownService;
+import org.bukkit.event.Listener;
 import java.util.AbstractMap;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.Optional;
 
 public final class BukkitKitsuneMain extends JavaPlugin {
 
+    @Inject
     private KitsuneConfig kitsuneConfig;
-    private Platform platformPlugin;
-    private EmbeddingService embeddingService;
+    @Inject
+    private Optional<ProtectionProvider> protectionProvider;
+    @Inject
     private KitsuneStorage storage;
-    private ProtectionProvider protectionProvider;
-    private BukkitContainerIndexer containerIndexer;
-    private TagProviderRegistry tagProviderRegistry;
-    private BukkitItemSerializer itemSerializer;
-    private ProviderMetadata providerMetadata;
+    @Inject
+    private EmbeddingService embeddingService;
+    @Inject
     private SearchHistoryStorage searchHistoryStorage;
-    private java.util.concurrent.ExecutorService searchHistoryExecutor;
+    @Inject
     private PlayerRadiusStorage playerRadiusStorage;
-    private java.util.concurrent.ExecutorService playerRadiusExecutor;
+    @Inject
+    private ProviderMetadata providerMetadata;
+    @Inject
+    private BukkitContainerIndexer containerIndexer;
+    @Inject
     private ContainerItemDisplay itemDisplayVisualizer;
+    @Inject
     private ItemDataCache itemDataCache;
-    private boolean initialized = false;
-    private volatile boolean providerMismatch = false;
+    @Inject
+    private ServiceInitializationService initService;
+    @Inject
+    private ShutdownService shutdownService;
+
+    private Injector injector;
+    private volatile boolean initialized = false;
 
     @Override
     public void onEnable() {
         saveDefaultConfig();
 
-        // Create platform abstractions
-        var configFactory = new BukkitConfigurationFactory(getConfig());
-        this.kitsuneConfig = new KitsuneConfig(configFactory);
+        // Create Guice injector with all modules
+        injector = Guice.createInjector(
+            new PluginModule(this),
+            new ConfigModule(),
+            new PlatformModule(),
+            new SerializationModule(),
+            new CacheModule(),
+            new StorageModule(),
+            new EmbeddingModule(),
+            new IndexerModule(),
+            new ProtectionModule(),
+            new HistoryModule(),
+            new VisualizerModule(),
+            new ListenerModule(),
+            new MetadataModule()
+        );
 
-        this.tagProviderRegistry = TagProviderRegistry.INSTANCE;
-        // Create platform plugin with tag provider registry
-        this.platformPlugin = new BukkitPlatform(this, configFactory, tagProviderRegistry);
-        Platform.set(platformPlugin);
+        // Inject this instance
+        injector.injectMembers(this);
 
-        // Register platform-specific providers
-        TagProviderRegistry.INSTANCE.register(new BukkitDataComponentTagProvider());
-
-        TagProviders.registerDefaults(tagProviderRegistry);
-
-        // Create serializer
-        this.itemSerializer = new BukkitItemSerializer(tagProviderRegistry);
-
-        // Register with service locator for external plugins
-        KitsuneService.register(tagProviderRegistry);
+        // Register tag provider for external plugins
+        KitsuneService.register(injector.getInstance(TagProviderRegistry.class));
 
         getLogger().info("Initializing Kitsune...");
 
-        // Register Brigadier commands first (required before server starts)
+        // Register Brigadier commands first
         getLifecycleManager().registerEventHandler(LifecycleEvents.COMMANDS, event -> {
-            final CommandDispatcher<CommandSourceStack> dispatcher = event.registrar().getDispatcher();
-            registerCommands(dispatcher);
+            registerCommands(event.registrar().getDispatcher());
         });
 
-        // Initialize services async to avoid blocking startup
-        initializeServicesAsync().thenRun(() -> {
+        // Initialize services async
+        initService.initializeAll().thenRun(() -> {
             registerListeners();
             initialized = true;
-            getLogger().info("Kitsune enabled successfully!");
         }).exceptionally(ex -> {
             getLogger().log(Level.SEVERE, "Failed to initialize Kitsune", ex);
             return null;
         });
     }
 
-    private CompletableFuture<Void> initializeServicesAsync() {
-        return CompletableFuture.supplyAsync(() -> {
-            Path dataDir = platformPlugin.getDataFolder();
-
-            // Create shared DataSource first
-            Path dbFile = dataDir.resolve("kitsune.db");
-            HikariConfig hikariConfig = new HikariConfig();
-            hikariConfig.setJdbcUrl("jdbc:sqlite:" + dbFile.toAbsolutePath());
-            hikariConfig.setDriverClassName("org.sqlite.JDBC");
-            hikariConfig.setMaximumPoolSize(1);
-            hikariConfig.setLeakDetectionThreshold(30000);
-            HikariDataSource dataSource = new HikariDataSource(hikariConfig);
-
-            // Create embedding service with shared DataSource
-            this.embeddingService = EmbeddingServiceFactory.create(kitsuneConfig, platformPlugin, dataSource);
-            int dimension = embeddingService.getDimension();
-
-            ContainerStorage containerStorage = new ContainerStorage(dataSource, getLogger());
-            JVectorIndex vectorIndex = new JVectorIndex(getLogger(), dataDir, dimension);
-            this.storage = new KitsuneStorage(getLogger(), containerStorage, vectorIndex);
-            this.protectionProvider = ProtectionProviderFactory.create(kitsuneConfig, this, getLogger()).orElse(null);
-
-            // Create provider metadata tracker
-            this.providerMetadata = new ProviderMetadata(getLogger(), platformPlugin.getDataFolder());
-            this.providerMetadata.load();
-
-            // Create ContainerIndexer
-            this.containerIndexer = new BukkitContainerIndexer(
-                getLogger(),
-                embeddingService,
-                storage,
-                kitsuneConfig,
-                itemSerializer
-            );
-
-            // Create ItemDisplay visualizer
-            this.itemDisplayVisualizer = new ContainerItemDisplay(getLogger(), kitsuneConfig, this);
-
-            // Create item data cache
-            this.itemDataCache = new ItemDataCache();
-
-            return null;
-        }).thenCompose(v -> embeddingService.initialize())
-          .thenRun(() -> storage.initialize())
-          .thenCompose(v -> {
-              // Initialize search history and player radius storage using the same database
-              var dataSource = storage.getDataSource();
-              this.searchHistoryExecutor = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor();
-              this.playerRadiusExecutor = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor();
-              this.searchHistoryStorage = new SearchHistoryStorage(getLogger(), dataSource, searchHistoryExecutor);
-              this.playerRadiusStorage = new PlayerRadiusStorage(getLogger(), dataSource, playerRadiusExecutor, kitsuneConfig.search().radius());
-              return searchHistoryStorage.initialize()
-                  .thenCompose(v2 -> playerRadiusStorage.initialize());
-          })
-          .thenRun(this::checkProviderMismatch);
-    }
-
-    private void checkProviderMismatch() {
-        String currentProvider = kitsuneConfig.embedding().provider();
-        String currentModel = kitsuneConfig.embedding().model();
-
-        providerMetadata.checkMismatch(currentProvider, currentModel).ifPresentOrElse(
-            mismatch -> {
-                providerMismatch = true;
-                getLogger().warning("=".repeat(60));
-                getLogger().warning("EMBEDDING PROVIDER CHANGED!");
-                getLogger().warning(mismatch.message());
-                getLogger().warning("Indexing and search are DISABLED until you run:");
-                getLogger().warning("  /kitsune purge");
-                getLogger().warning("=".repeat(60));
-            },
-            () -> {
-                // Save current provider info (first run or same provider)
-                providerMetadata.save(currentProvider, currentModel);
-            }
-        );
-    }
-
+    
     private void registerListeners() {
+        Set<Listener> listeners = injector.getInstance(Key.get(new TypeLiteral<Set<Listener>>() {}));
         var pm = getServer().getPluginManager();
-        var locationResolver = new BukkitContainerLocationResolver();
-        pm.registerEvents(new ContainerCloseListener(containerIndexer, locationResolver, this), this);
-        pm.registerEvents(new HopperTransferListener(containerIndexer, locationResolver, this), this);
-        pm.registerEvents(new ContainerBreakListener(storage, containerIndexer, this), this);
-        pm.registerEvents(new ChestPlaceListener(locationResolver, containerIndexer, this), this);
-
-        // Register player quit listener for cleanup
-        if (itemDisplayVisualizer != null) {
-            pm.registerEvents(new PlayerQuitListener(itemDisplayVisualizer), this);
+        for (Listener listener : listeners) {
+            pm.registerEvents(listener, this);
         }
     }
 
@@ -254,15 +206,15 @@ public final class BukkitKitsuneMain extends JavaPlugin {
                     .requires(source -> source.getSender().hasPermission("kitsune.admin"))
                     .executes(context -> {
                         reloadConfig();
-                        var configFactory = new BukkitConfigurationFactory(getConfig());
-                        kitsuneConfig = new KitsuneConfig(configFactory);
+                        // Rebind config via injector
+                        injector.getInstance(Key.get(KitsuneConfig.class));
                         context.getSource().getSender().sendMessage("§aKitsune config reloaded.");
                         return 1;
                     }))
                 .then(Commands.literal("stats")
                     .requires(source -> source.getSender().hasPermission("kitsune.admin"))
                     .executes(context -> {
-                        if (!initialized) {
+                        if (!initService.isInitialized()) {
                             context.getSource().getSender().sendMessage("§cKitsune is still initializing...");
                             return 0;
                         }
@@ -299,7 +251,7 @@ public final class BukkitKitsuneMain extends JavaPlugin {
                 .then(Commands.literal("purge")
                     .requires(source -> source.getSender().hasPermission("kitsune.admin"))
                     .executes(context -> {
-                        if (!initialized) {
+                        if (!initService.isInitialized()) {
                             context.getSource().getSender().sendMessage("§cKitsune is still initializing...");
                             return 0;
                         }
@@ -422,12 +374,12 @@ public final class BukkitKitsuneMain extends JavaPlugin {
             return 0;
         }
 
-        if (!initialized) {
+        if (!initService.isInitialized()) {
             source.getSender().sendMessage("§cKitsune is still initializing. Please wait...");
             return 0;
         }
 
-        if (providerMismatch) {
+        if (initService.hasProviderMismatch()) {
             source.getSender().sendMessage("§cEmbedding provider has changed. Run '/kitsune purge' first.");
             return 0;
         }
@@ -537,8 +489,8 @@ public final class BukkitKitsuneMain extends JavaPlugin {
         var accessibleResults = filteredResults.stream()
             .filter(result -> {
                 // Filter by protection if player
-                return player == null || protectionProvider == null ||
-                       protectionProvider.canAccess(player.getUniqueId(), result.location());
+                return player == null || protectionProvider.isEmpty() ||
+                       protectionProvider.get().canAccess(player.getUniqueId(), result.location());
             })
             .toList();
 
@@ -996,7 +948,7 @@ public final class BukkitKitsuneMain extends JavaPlugin {
         player.sendMessage("§aFilled container with " + itemCount + " random items!");
 
         // Auto-index the chest
-        containerIndexer.scheduleIndex(block.getLocation(), inventory.getContents());
+        injector.getInstance(BukkitContainerIndexer.class).scheduleIndex(block.getLocation(), inventory.getContents());
         player.sendMessage("§7Container will be indexed in " + kitsuneConfig.indexing().debounceDelayMs() + "ms...");
 
         return 1;
@@ -1020,7 +972,6 @@ public final class BukkitKitsuneMain extends JavaPlugin {
                     kitsuneConfig.embedding().provider(),
                     kitsuneConfig.embedding().model()
                 );
-                providerMismatch = false;
 
                 source.getSender().sendMessage("§aPurge complete! All vectors and cache cleared.");
                 source.getSender().sendMessage("§7Provider metadata reset to: §f" +
@@ -1037,7 +988,7 @@ public final class BukkitKitsuneMain extends JavaPlugin {
     }
 
     private int executeGetThreshold(CommandSourceStack source) {
-        if (!initialized) {
+        if (!initService.isInitialized()) {
             source.getSender().sendMessage("§cKitsune is still initializing...");
             return 0;
         }
@@ -1056,7 +1007,7 @@ public final class BukkitKitsuneMain extends JavaPlugin {
     }
 
     private int executeSetThreshold(CommandSourceStack source, float value) {
-        if (!initialized) {
+        if (!initService.isInitialized()) {
             source.getSender().sendMessage("§cKitsune is still initializing...");
             return 0;
         }
@@ -1275,73 +1226,38 @@ public final class BukkitKitsuneMain extends JavaPlugin {
 
     @Override
     public void onDisable() {
-        if (containerIndexer != null) {
-            containerIndexer.shutdown();
-        }
-        if (storage != null) {
-            storage.shutdown();
-        }
-        if (embeddingService != null) {
-            embeddingService.shutdown();
-        }
-        if (searchHistoryStorage != null) {
-            searchHistoryStorage.close();
-        }
-        if (searchHistoryExecutor != null) {
-            searchHistoryExecutor.shutdownNow();
-        }
-        if (playerRadiusStorage != null) {
-            playerRadiusStorage.close();
-        }
-        if (playerRadiusExecutor != null) {
-            playerRadiusExecutor.shutdownNow();
-        }
-        if (itemDisplayVisualizer != null) {
-            itemDisplayVisualizer.cleanupAll();
-        }
-        if (itemDataCache != null) {
-            itemDataCache.clear();
-        }
-        KitsuneService.unregister();
-        getLogger().info("Kitsune disabled.");
+        shutdownService.shutdown();
     }
 
-    public KitsuneConfig getKitsuneConfig() {
+    // Keep getters for backward compatibility
+    public KitsuneConfigInterface getKitsuneConfig() {
         return kitsuneConfig;
     }
-
-    public BukkitContainerIndexer getContainerIndexer() {
-        return containerIndexer;
-    }
-
     public KitsuneStorage getStorage() {
-        return storage;
+        return injector.getInstance(KitsuneStorage.class);
     }
-
     public EmbeddingService getEmbeddingService() {
-        return embeddingService;
+        return injector.getInstance(EmbeddingService.class);
     }
-
     public ProtectionProvider getProtectionProvider() {
-        return protectionProvider;
+        return protectionProvider.orElse(null);
     }
-
     public boolean isInitialized() {
-        return initialized;
+        return initService.isInitialized();
     }
 
     /**
      * Get the tag provider registry for external plugins to register custom tag providers.
      */
     public TagProviderRegistry getTagProviderRegistry() {
-        return tagProviderRegistry;
+        return injector.getInstance(TagProviderRegistry.class);
     }
 
     /**
      * Get the item serializer.
      */
     public BukkitItemSerializer getItemSerializer() {
-        return itemSerializer;
+        return injector.getInstance(BukkitItemSerializer.class);
     }
 
     /**

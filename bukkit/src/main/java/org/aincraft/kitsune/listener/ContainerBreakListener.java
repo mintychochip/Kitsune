@@ -12,12 +12,14 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.plugin.Plugin;
+import jakarta.inject.Inject;
 
 public class ContainerBreakListener implements Listener {
     private final KitsuneStorage storage;
     private final BukkitContainerIndexer indexer;
     private final Plugin plugin;
 
+    @Inject
     public ContainerBreakListener(KitsuneStorage storage, BukkitContainerIndexer indexer, Plugin plugin) {
         this.storage = storage;
         this.indexer = indexer;

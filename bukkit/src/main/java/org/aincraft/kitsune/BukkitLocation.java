@@ -24,6 +24,6 @@ public record BukkitLocation(org.bukkit.Location location) implements Location {
 
   @Override
   public Block getBlock() {
-    return new BukkitBlock(location.getBlock());
+    return BukkitBlock.from(location.getBlock());
   }
 }

@@ -3,7 +3,7 @@ package org.aincraft.kitsune.indexing;
 import org.aincraft.kitsune.api.ContainerLocations;
 import org.aincraft.kitsune.Location;
 import org.aincraft.kitsune.api.indexing.SerializedItem;
-import org.aincraft.kitsune.config.KitsuneConfig;
+import org.aincraft.kitsune.config.KitsuneConfigInterface;
 import org.aincraft.kitsune.embedding.EmbeddingService;
 import java.util.logging.Logger;
 import org.aincraft.kitsune.serialization.BukkitItemSerializer;
@@ -29,7 +29,7 @@ public class BukkitContainerIndexer extends ContainerIndexer {
     private final BukkitItemSerializer itemSerializer;
 
     public BukkitContainerIndexer(Logger logger, EmbeddingService embeddingService,
-                                   KitsuneStorage storage, KitsuneConfig config,
+                                   KitsuneStorage storage, KitsuneConfigInterface config,
                                    BukkitItemSerializer itemSerializer) {
         super(logger, embeddingService, storage, config);
         this.itemSerializer = itemSerializer;

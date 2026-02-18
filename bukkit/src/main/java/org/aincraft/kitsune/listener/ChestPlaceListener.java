@@ -9,12 +9,14 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.plugin.Plugin;
+import jakarta.inject.Inject;
 
 public class ChestPlaceListener implements Listener {
     private final ContainerLocationResolver locationResolver;
     private final BukkitContainerIndexer containerIndexer;
     private final Plugin plugin;
 
+    @Inject
     public ChestPlaceListener(ContainerLocationResolver locationResolver, BukkitContainerIndexer containerIndexer, Plugin plugin) {
         this.locationResolver = locationResolver;
         this.containerIndexer = containerIndexer;

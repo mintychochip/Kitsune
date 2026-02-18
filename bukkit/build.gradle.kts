@@ -22,6 +22,9 @@ dependencies {
     testImplementation(platform("org.junit:junit-bom:5.10.0"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+
+    // Guice for dependency injection (inherits from common)
+    implementation("com.google.inject:guice:7.0.0")
 }
 
 tasks.jar {
@@ -46,6 +49,10 @@ tasks.shadowJar {
 
     // Merge service files
     mergeServiceFiles()
+
+    // Relocate Guice to avoid conflicts
+    relocate("com.google.inject", "org.aincraft.kitsune.lib.guice")
+    relocate("jakarta.inject", "org.aincraft.kitsune.lib.jakarta.inject")
 
     // Exclude unused large dependencies
     exclude("io/milvus/**")

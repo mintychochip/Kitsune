@@ -11,6 +11,7 @@ import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.Plugin;
+import jakarta.inject.Inject;
 
 import java.util.Arrays;
 import java.util.concurrent.CompletableFuture;
@@ -22,9 +23,10 @@ public class ContainerCloseListener implements Listener {
     private final Plugin plugin;
     private final Logger logger;
 
+    @Inject
     public ContainerCloseListener(BukkitContainerIndexer containerIndexer,
-                               ContainerLocationResolver locationResolver,
-                               Plugin plugin) {
+                                 ContainerLocationResolver locationResolver,
+                                 Plugin plugin) {
         this.containerIndexer = containerIndexer;
         this.locationResolver = locationResolver;
         this.plugin = plugin;

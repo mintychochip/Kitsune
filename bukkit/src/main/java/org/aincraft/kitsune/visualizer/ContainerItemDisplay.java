@@ -1,6 +1,7 @@
 package org.aincraft.kitsune.visualizer;
 
 import org.aincraft.kitsune.config.KitsuneConfig;
+import org.aincraft.kitsune.config.KitsuneConfigInterface;
 import org.aincraft.kitsune.model.SearchResult;
 import org.aincraft.kitsune.util.BukkitLocationFactory;
 import org.bukkit.Location;
@@ -28,19 +29,20 @@ import java.util.logging.Logger;
  */
 public class ContainerItemDisplay {
     private final Logger logger;
-    private final KitsuneConfig config;
+    private final KitsuneConfigInterface config;
     private final JavaPlugin plugin;
 
     // Track displays per location key (world:x:y:z)
     private final Map<String, List<ItemDisplay>> locationDisplays = new HashMap<>();
     private final Map<String, Map<ItemDisplay, Double>> locationInitialAngles = new HashMap<>();
+    private final Map<String, Map<ItemDisplay, Integer>> locationItemIndices = new HashMap<>();
     private final Map<String, Integer> locationAnimationTasks = new HashMap<>();
     private final Map<String, Location> locationCenters = new HashMap<>();
     private final Map<String, TextDisplay> locationTextDisplays = new HashMap<>();
 
     public ContainerItemDisplay(Logger logger, KitsuneConfig config, JavaPlugin plugin) {
         this.logger = logger;
-        this.config = config;
+        this.config = (KitsuneConfigInterface) config;
         this.plugin = plugin;
     }
 
@@ -71,7 +73,7 @@ public class ContainerItemDisplay {
         // Clean up existing displays for THIS location only
         clearLocationDisplays(locKey);
 
-        int displayCount = config.visualizer().itemDisplayCount();
+        int displayCount = ((KitsuneConfig) config).visualizer().itemDisplayCount();
         if (displayCount <= 0) {
             displayCount = 6;
         }
@@ -90,9 +92,10 @@ public class ContainerItemDisplay {
 
         List<ItemDisplay> displays = new ArrayList<>();
         Map<ItemDisplay, Double> initialAngles = new HashMap<>();
+        Map<ItemDisplay, Integer> itemIndices = new HashMap<>();
 
-        double radius = config.visualizer().displayRadius();
-        double heightOffset = config.visualizer().displayHeight();
+        double radius = ((KitsuneConfig) config).visualizer().displayRadius();
+        double heightOffset = ((KitsuneConfig) config).visualizer().displayHeight();
 
         for (int i = 0; i < topItems.size(); i++) {
             double angle = (2 * Math.PI * i) / topItems.size(); // Spread evenly in circle
@@ -120,6 +123,7 @@ public class ContainerItemDisplay {
                 });
 
                 initialAngles.put(display, angle);
+                itemIndices.put(display, i);
                 displays.add(display);
             } catch (Exception e) {
                 logger.warning("Failed to spawn ItemDisplay: " + e.getMessage());
@@ -129,6 +133,7 @@ public class ContainerItemDisplay {
         if (!displays.isEmpty()) {
             locationDisplays.put(locKey, displays);
             locationInitialAngles.put(locKey, initialAngles);
+            locationItemIndices.put(locKey, itemIndices);
             locationCenters.put(locKey, bukkitLoc.clone());
 
             // Spawn TextDisplay showing item count
@@ -153,14 +158,12 @@ public class ContainerItemDisplay {
             }
 
             // Start animation for this location
-            if (config.visualizer().spinEnabled()) {
-                startAnimation(locKey);
-            }
+            startAnimation(locKey);
 
             // Schedule cleanup for this location
             plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
                 clearLocationDisplays(locKey);
-            }, config.visualizer().displayDurationTicks());
+            }, ((KitsuneConfig) config).visualizer().displayDurationTicks());
         }
     }
 
@@ -266,8 +269,9 @@ public class ContainerItemDisplay {
             textDisplay.remove();
         }
 
-        // Clear angles and center
+        // Clear angles, indices and center
         locationInitialAngles.remove(locKey);
+        locationItemIndices.remove(locKey);
         locationCenters.remove(locKey);
     }
 
@@ -292,6 +296,7 @@ public class ContainerItemDisplay {
         }
         locationDisplays.clear();
         locationInitialAngles.clear();
+        locationItemIndices.clear();
         locationCenters.clear();
 
         for (TextDisplay textDisplay : locationTextDisplays.values()) {
@@ -323,15 +328,17 @@ public class ContainerItemDisplay {
             public void run() {
                 List<ItemDisplay> displays = locationDisplays.get(locKey);
                 Map<ItemDisplay, Double> angles = locationInitialAngles.get(locKey);
+                Map<ItemDisplay, Integer> indices = locationItemIndices.get(locKey);
 
-                if (displays == null || angles == null || displays.isEmpty()) {
+                if (displays == null || angles == null || indices == null || displays.isEmpty()) {
                     cancel();
                     return;
                 }
 
-                double spinSpeed = config.visualizer().spinSpeed();
-                double radius = config.visualizer().displayRadius();
-                double heightOffset = config.visualizer().displayHeight();
+                double spinSpeed = ((KitsuneConfig) config).visualizer().spinSpeed();
+                double radius = ((KitsuneConfig) config).visualizer().displayRadius();
+                double heightOffset = ((KitsuneConfig) config).visualizer().displayHeight();
+                int totalItems = displays.size();
 
                 for (ItemDisplay display : displays) {
                     if (display == null || display.isDead()) {
@@ -339,7 +346,8 @@ public class ContainerItemDisplay {
                     }
 
                     Double initialAngle = angles.get(display);
-                    if (initialAngle == null) {
+                    Integer itemIndex = indices.get(display);
+                    if (initialAngle == null || itemIndex == null) {
                         continue;
                     }
 
@@ -347,16 +355,16 @@ public class ContainerItemDisplay {
                     double x = Math.cos(initialAngle) * radius;
                     double z = Math.sin(initialAngle) * radius;
 
-                    // Bobbing motion (up/down oscillation)
-                    double bobOffset = Math.sin(tick * 0.1) * 0.15;
-                    double itemBobOffset = Math.sin(tick * 0.1 + initialAngle) * 0.1; // Slight phase offset per item
+                    // Bobbing motion (up/down oscillation) - staggered per item
+                    double phaseOffset = (2 * Math.PI * itemIndex) / totalItems;
+                    double bobOffset = Math.sin(tick * 0.15 + phaseOffset) * 0.2;
 
                     // Update position
-                    Location newLoc = centerLoc.clone().add(x + 0.5, heightOffset + bobOffset + itemBobOffset, z + 0.5);
+                    Location newLoc = centerLoc.clone().add(x + 0.5, heightOffset + bobOffset, z + 0.5);
                     display.teleport(newLoc);
 
                     // Apply spin
-                    if (config.visualizer().spinEnabled()) {
+                    if (((KitsuneConfig) config).visualizer().spinEnabled()) {
                         double spinAngle = Math.toRadians(spinSpeed * tick);
                         Transformation transformation = display.getTransformation();
 

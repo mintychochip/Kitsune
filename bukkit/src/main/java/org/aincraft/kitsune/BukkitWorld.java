@@ -9,6 +9,6 @@ public record BukkitWorld(org.bukkit.World world) implements World {
 
   @Override
   public Block getBlock(int x, int y, int z) {
-    return new BukkitBlock(world.getBlockAt(x,y,z));
+    return BukkitBlock.from(world.getBlockAt(x,y,z));
   }
 }

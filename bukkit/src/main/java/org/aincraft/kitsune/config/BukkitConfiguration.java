@@ -2,12 +2,12 @@ package org.aincraft.kitsune.config;
 
 import java.util.Collections;
 import java.util.Set;
-import org.bukkit.configuration.Configuration;
+import org.bukkit.configuration.ConfigurationSection;
 
 public final class BukkitConfiguration implements org.aincraft.kitsune.config.Configuration {
-    private final Configuration config;
+    private final ConfigurationSection config;
 
-    public BukkitConfiguration(Configuration config) {
+    public BukkitConfiguration(ConfigurationSection config) {
         this.config = config;
     }
 

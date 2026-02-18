@@ -1,14 +1,17 @@
 package org.aincraft.kitsune.serialization;
 
+import com.google.common.base.Preconditions;
 import io.papermc.paper.datacomponent.DataComponentTypes;
 import io.papermc.paper.datacomponent.item.ItemEnchantments;
 import io.papermc.paper.datacomponent.item.BundleContents;
 import io.papermc.paper.datacomponent.item.ItemContainerContents;
 import java.util.List;
+import java.util.Optional;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.event.HoverEvent;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
+import org.aincraft.kitsune.Inventory;
 import org.aincraft.kitsune.Item;
 import org.bukkit.Material;
 import org.bukkit.enchantments.Enchantment;
@@ -25,7 +28,7 @@ import java.util.Objects;
  * Bukkit/Paper implementation of Item. Extracts item data using Paper's DataComponent API
  * (1.21+).
  */
-public class BukkitItem implements Item {
+public final class BukkitItem implements Item {
 
   private final ItemStack itemStack;
   private final Material material;
@@ -105,9 +108,7 @@ public class BukkitItem implements Item {
 
   @Override
   public <T> T unwrap(Class<T> expectedType) {
-    if (!expectedType.isInstance(itemStack)) {
-      throw new ClassCastException("Expected " + expectedType.getName() + " but item is " + itemStack.getClass().getName());
-    }
+    Preconditions.checkArgument(ItemStack.class.equals(expectedType));
     return expectedType.cast(itemStack);
   }
 
@@ -277,5 +278,24 @@ public class BukkitItem implements Item {
       }
     }
     return null;
+  }
+
+  @Override
+  public Optional<Inventory> getInventory() {
+    // Check for shulker/container contents
+    if (itemStack.hasData(DataComponentTypes.CONTAINER)) {
+      ItemContainerContents container = itemStack.getData(DataComponentTypes.CONTAINER);
+      if (container != null && !container.contents().isEmpty()) {
+        return Optional.of(new ItemContainerInventory(new ArrayList<>(container.contents())));
+      }
+    }
+    // Check for bundle contents
+    if (itemStack.hasData(DataComponentTypes.BUNDLE_CONTENTS)) {
+      BundleContents bundle = itemStack.getData(DataComponentTypes.BUNDLE_CONTENTS);
+      if (bundle != null && !bundle.contents().isEmpty()) {
+        return Optional.of(new ItemContainerInventory(new ArrayList<>(bundle.contents())));
+      }
+    }
+    return Optional.empty();
   }
 }

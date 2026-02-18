@@ -4,6 +4,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.logging.Logger;
 import org.aincraft.kitsune.config.KitsuneConfig;
+import org.aincraft.kitsune.config.KitsuneConfigInterface;
 import org.aincraft.kitsune.util.BukkitLocationFactory;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;

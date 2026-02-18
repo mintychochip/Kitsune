@@ -11,12 +11,14 @@ import org.bukkit.event.inventory.InventoryMoveItemEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.plugin.Plugin;
+import jakarta.inject.Inject;
 
 public class HopperTransferListener implements Listener {
     private final BukkitContainerIndexer containerIndexer;
     private final ContainerLocationResolver locationResolver;
     private final Plugin plugin;
 
+    @Inject
     public HopperTransferListener(BukkitContainerIndexer containerIndexer, ContainerLocationResolver locationResolver, Plugin plugin) {
         this.containerIndexer = containerIndexer;
         this.locationResolver = locationResolver;
@@ -28,9 +30,7 @@ public class HopperTransferListener implements Listener {
         Inventory source = event.getSource();
         Inventory destination = event.getDestination();
 
-        // Delay by 1 tick - event fires BEFORE item moves
         plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
-            // Handle source container (single or double chest)
             InventoryHolder sourceHolder = source.getHolder();
             if (sourceHolder instanceof Container || sourceHolder instanceof DoubleChest) {
                 ContainerLocations sourceLocations = locationResolver.resolveFromInventoryHolder(sourceHolder);
