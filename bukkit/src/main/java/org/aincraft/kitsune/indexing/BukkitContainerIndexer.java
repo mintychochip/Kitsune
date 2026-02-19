@@ -43,7 +43,7 @@ public class BukkitContainerIndexer extends ContainerIndexer {
      * @param items the Bukkit items to index
      */
     public void scheduleIndex(ContainerLocations locations, ItemStack[] items) {
-        List<SerializedItem> serializedItems = itemSerializer.serializeItemsToChunks(items);
+        List<SerializedItem> serializedItems = itemSerializer.serialize(items);
         scheduleIndex(locations, serializedItems);
     }
 
@@ -61,7 +61,7 @@ public class BukkitContainerIndexer extends ContainerIndexer {
         }
 
         Location locationData = BukkitLocation.from(location);
-        List<SerializedItem> serializedItems = itemSerializer.serializeItemsToChunks(items);
+        List<SerializedItem> serializedItems = itemSerializer.serialize(items);
         scheduleIndex(ContainerLocations.single(locationData), serializedItems);
     }
 
@@ -132,7 +132,7 @@ public class BukkitContainerIndexer extends ContainerIndexer {
         }
 
         Location locationData = BukkitLocation.from(location);
-        List<SerializedItem> serializedItems = itemSerializer.serializeItemsToChunks(items);
+        List<SerializedItem> serializedItems = itemSerializer.serialize(items);
 
         // Create a future that we'll complete when indexing is done
         CompletableFuture<Void> completionFuture = new CompletableFuture<>();

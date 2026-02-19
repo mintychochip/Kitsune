@@ -2,7 +2,7 @@ package org.aincraft.kitsune;
 
 public interface Inventory {
 
-  int getSize();
+  int size();
 
   Item getItem(int slot);
 }

@@ -76,8 +76,7 @@ import org.aincraft.kitsune.di.HistoryModule;
 import org.aincraft.kitsune.di.VisualizerModule;
 import org.aincraft.kitsune.di.ListenerModule;
 import org.aincraft.kitsune.di.MetadataModule;
-import org.aincraft.kitsune.di.ServiceInitializationService;
-import org.aincraft.kitsune.di.ShutdownService;
+import org.aincraft.kitsune.di.LifecycleService;
 import org.bukkit.event.Listener;
 import java.util.AbstractMap;
 import java.util.List;
@@ -108,9 +107,7 @@ public final class BukkitKitsuneMain extends JavaPlugin {
     @Inject
     private ItemDataCache itemDataCache;
     @Inject
-    private ServiceInitializationService initService;
-    @Inject
-    private ShutdownService shutdownService;
+    private LifecycleService lifecycleService;
 
     private Injector injector;
     private volatile boolean initialized = false;
@@ -150,7 +147,7 @@ public final class BukkitKitsuneMain extends JavaPlugin {
         });
 
         // Initialize services async
-        initService.initializeAll().thenRun(() -> {
+        lifecycleService.initialize().thenRun(() -> {
             registerListeners();
             initialized = true;
         }).exceptionally(ex -> {
@@ -1224,7 +1221,7 @@ public final class BukkitKitsuneMain extends JavaPlugin {
 
     @Override
     public void onDisable() {
-        shutdownService.shutdown();
+        lifecycleService.shutdown();
     }
 
     // Keep getters for backward compatibility

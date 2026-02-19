@@ -8,5 +8,5 @@ public interface Configuration {
   boolean getBoolean(String path, boolean def);
   double getDouble(String path, double def);
   Set<String> getKeys(String path);
-
+  String toString();
 }

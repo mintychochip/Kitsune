@@ -53,22 +53,4 @@ public final class BukkitItemSerializer {
         List<ItemStack> itemList = Arrays.asList(items);
         return logic.serializeTree(BukkitItemAdapter.INSTANCE, itemList);
     }
-
-    /**
-     * Legacy method for backward compatibility.
-     * @deprecated Use {@link #serialize(ItemStack[])} instead
-     */
-    @Deprecated
-    public List<SerializedItem> serializeItemsToChunks(ItemStack[] items) {
-        return serialize(items);
-    }
-
-    /**
-     * Legacy method for backward compatibility.
-     * @deprecated Use {@link #serializeTree(ItemStack[])} instead
-     */
-    @Deprecated
-    public ContainerNode serializeItemsToChunksTree(ItemStack[] items) {
-        return serializeTree(items);
-    }
 }
