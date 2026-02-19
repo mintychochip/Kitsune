@@ -1,9 +1,9 @@
 package org.aincraft.kitsune.listener;
 
+import org.aincraft.kitsune.BukkitLocation;
 import org.aincraft.kitsune.Location;
 import org.aincraft.kitsune.indexing.BukkitContainerIndexer;
 import org.aincraft.kitsune.storage.KitsuneStorage;
-import org.aincraft.kitsune.util.BukkitLocationFactory;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.block.Container;
@@ -38,7 +38,7 @@ public class ContainerBreakListener implements Listener {
         Block otherHalf = findDoubleChestOtherHalf(brokenBlock);
 
         // Convert broken block location
-        Location brokenLocation = BukkitLocationFactory.toLocationData(brokenBlock.getLocation());
+        Location brokenLocation = BukkitLocation.from(brokenBlock.getLocation());
 
         // Look up the primary location for this block (handles multi-block containers)
         storage.getPrimaryLocation(brokenLocation)

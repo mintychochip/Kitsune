@@ -1,28 +1,38 @@
 package org.aincraft.kitsune;
 
-public record BukkitLocation(org.bukkit.Location location) implements Location {
+import org.bukkit.Bukkit;
+import org.bukkit.World;
+
+public record BukkitLocation(org.bukkit.Location location, int blockX, int blockY,
+                             int blockZ) implements Location {
+
+  public static Location from(org.bukkit.Location location) {
+    if (location == null) {
+      throw new IllegalArgumentException("Location cannot be null");
+    }
+    return new BukkitLocation(location, location.blockX(), location.blockY(), location.blockZ());
+  }
+
+  public static org.bukkit.Location toBukkit(Location data) {
+    World world = Bukkit.getWorld(data.getWorld().getName());
+    if (world == null) {
+      throw new IllegalArgumentException("World is not loaded: " + data.getWorld().getName());
+    }
+    return new org.bukkit.Location(world, data.blockX(), data.blockY(), data.blockZ());
+  }
+
+  public static org.bukkit.Location toBukkitOrNull(Location data) {
+    if (data == null) return null;
+    World world = Bukkit.getWorld(data.getWorld().getName());
+    if (world == null) return null;
+    return new org.bukkit.Location(world, data.blockX(), data.blockY(), data.blockZ());
+  }
 
   @Override
   public World getWorld() {
     return new BukkitWorld(location.getWorld());
   }
 
-  @Override
-  public int blockX() {
-    return location.blockX();
-  }
-
-  @Override
-  public int blockY() {
-    return location.blockY();
-  }
-
-  @Override
-  public int blockZ() {
-    return location.blockZ();
-  }
-
-  @Override
   public Block getBlock() {
     return BukkitBlock.from(location.getBlock());
   }

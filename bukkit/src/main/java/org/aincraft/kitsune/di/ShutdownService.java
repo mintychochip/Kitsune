@@ -2,6 +2,7 @@ package org.aincraft.kitsune.di;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.google.inject.name.Named;
 import org.aincraft.kitsune.embedding.EmbeddingService;
 import org.aincraft.kitsune.indexing.BukkitContainerIndexer;
 import org.aincraft.kitsune.storage.KitsuneStorage;
@@ -25,8 +26,8 @@ public class ShutdownService {
     private final PlayerRadiusStorage playerRadiusStorage;
     private final ContainerItemDisplay itemDisplayVisualizer;
     private final ItemDataCache itemDataCache;
-    private final @SearchHistoryExecutor ExecutorService searchHistoryExecutor;
-    private final @PlayerRadiusExecutor ExecutorService playerRadiusExecutor;
+    private final @Named("searchHistoryExecutor") ExecutorService searchHistoryExecutor;
+    private final @Named("playerRadiusExecutor") ExecutorService playerRadiusExecutor;
 
     @Inject
     public ShutdownService(
@@ -38,8 +39,8 @@ public class ShutdownService {
             PlayerRadiusStorage playerRadiusStorage,
             ContainerItemDisplay itemDisplayVisualizer,
             ItemDataCache itemDataCache,
-            @SearchHistoryExecutor ExecutorService searchHistoryExecutor,
-            @PlayerRadiusExecutor ExecutorService playerRadiusExecutor) {
+            @Named("searchHistoryExecutor") ExecutorService searchHistoryExecutor,
+            @Named("playerRadiusExecutor") ExecutorService playerRadiusExecutor) {
         this.logger = logger;
         this.containerIndexer = containerIndexer;
         this.storage = storage;

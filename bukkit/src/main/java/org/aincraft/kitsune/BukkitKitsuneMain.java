@@ -16,7 +16,6 @@ import org.aincraft.kitsune.api.model.ContainerPath;
 import org.aincraft.kitsune.api.model.ContainerNode;
 import org.aincraft.kitsune.api.serialization.TagProviderRegistry;
 import org.aincraft.kitsune.model.SearchHistoryEntry;
-import org.aincraft.kitsune.config.BukkitConfigurationFactory;
 import org.aincraft.kitsune.config.KitsuneConfigInterface;
 import org.aincraft.kitsune.config.KitsuneConfig;
 import org.aincraft.kitsune.storage.SearchHistoryStorage;
@@ -45,7 +44,6 @@ import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import java.nio.file.Path;
 import org.aincraft.kitsune.util.BukkitContainerLocationResolver;
-import org.aincraft.kitsune.util.BukkitLocationFactory;
 import org.aincraft.kitsune.util.BukkitItemLoader;
 import org.aincraft.kitsune.model.tree.SearchResultTreeRenderer;
 import org.aincraft.kitsune.model.tree.SearchResultTreeBuilder;
@@ -430,7 +428,7 @@ public final class BukkitKitsuneMain extends JavaPlugin {
         if (player != null) {
             source.getSender().sendMessage("§7Searching within " + radius + " blocks for: §f" + query);
 
-            org.aincraft.kitsune.Location playerLocation = BukkitLocationFactory.toLocationData(player.getLocation());
+            org.aincraft.kitsune.Location playerLocation = BukkitLocation.from(player.getLocation());
             searchFuture = embeddingService.embed(query.toLowerCase(), "RETRIEVAL_QUERY").thenCompose(embedding ->
                 storage.searchWithinRadius(embedding, limit * 3, playerLocation, radius)
             );
@@ -516,7 +514,7 @@ public final class BukkitKitsuneMain extends JavaPlugin {
         // Step 5: Spawn highlights for all locations
         if (player != null && player.isOnline()) {
             for (var result : accessibleResults) {
-                Location bukkitLoc = BukkitLocationFactory.toBukkitLocationOrNull(result.location());
+                Location bukkitLoc = BukkitLocation.toBukkitOrNull(result.location());
                 if (bukkitLoc != null) {
                     spawnHighlight(bukkitLoc, player, result);
                 }

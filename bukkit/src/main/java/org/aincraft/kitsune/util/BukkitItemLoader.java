@@ -1,6 +1,7 @@
 package org.aincraft.kitsune.util;
 
 import io.papermc.paper.datacomponent.DataComponentTypes;
+import org.aincraft.kitsune.BukkitLocation;
 import org.aincraft.kitsune.Location;
 import org.aincraft.kitsune.api.indexing.ItemLoader;
 import org.aincraft.kitsune.api.model.ContainerPath;
@@ -59,7 +60,7 @@ public class BukkitItemLoader implements ItemLoader {
 
         try {
             // Convert to Bukkit location
-            org.bukkit.Location bukkitLoc = BukkitLocationFactory.toBukkitLocationOrNull(location);
+            org.bukkit.Location bukkitLoc = BukkitLocation.toBukkitOrNull(location);
             if (bukkitLoc == null) {
                 logger.fine("BukkitItemLoader: world not loaded for location: " + location.getWorld().getName());
                 return null;

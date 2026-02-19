@@ -3,13 +3,13 @@ package org.aincraft.kitsune.di;
 import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
 import com.google.inject.Singleton;
+import com.google.inject.name.Named;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import org.aincraft.kitsune.config.KitsuneConfig;
 import org.aincraft.kitsune.storage.KitsuneStorage;
 import org.aincraft.kitsune.storage.metadata.ContainerStorage;
 import org.aincraft.kitsune.storage.vector.JVectorIndex;
-import org.aincraft.kitsune.di.EmbeddingDimension;
 import org.aincraft.kitsune.di.EmbeddingDimensionHolder;
 import org.aincraft.kitsune.Platform;
 
@@ -35,7 +35,7 @@ public class StorageModule extends AbstractModule {
     }
 
     @Provides @Singleton
-    JVectorIndex provideJVectorIndex(Logger logger, Platform platform, @EmbeddingDimension int dimension) {
+    JVectorIndex provideJVectorIndex(Logger logger, Platform platform, @Named("embeddingDimension") int dimension) {
         return new JVectorIndex(logger, platform.getDataFolder(), dimension);
     }
 

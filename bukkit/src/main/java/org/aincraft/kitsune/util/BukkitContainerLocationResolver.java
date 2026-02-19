@@ -1,5 +1,6 @@
 package org.aincraft.kitsune.util;
 
+import org.aincraft.kitsune.BukkitLocation;
 import org.aincraft.kitsune.api.ContainerLocations;
 import org.aincraft.kitsune.Location;
 import org.aincraft.kitsune.api.indexing.ContainerLocationResolver;
@@ -35,7 +36,7 @@ public final class BukkitContainerLocationResolver implements ContainerLocationR
 
         // Handle regular container blocks
         if (holder instanceof Container container) {
-            Location location = BukkitLocationFactory.toLocationData(container.getLocation());
+            Location location = BukkitLocation.from(container.getLocation());
             return ContainerLocations.single(location);
         }
 
@@ -66,7 +67,7 @@ public final class BukkitContainerLocationResolver implements ContainerLocationR
         }
 
         // Fallback to single location
-        Location location = BukkitLocationFactory.toLocationData(bukkitBlock.getLocation());
+        Location location = BukkitLocation.from(bukkitBlock.getLocation());
         return ContainerLocations.single(location);
     }
 
@@ -93,8 +94,8 @@ public final class BukkitContainerLocationResolver implements ContainerLocationR
         Chest leftChest = (Chest) leftHolder;
         Chest rightChest = (Chest) rightHolder;
 
-        Location leftLocation = BukkitLocationFactory.toLocationData(leftChest.getLocation());
-        Location rightLocation = BukkitLocationFactory.toLocationData(rightChest.getLocation());
+        Location leftLocation = BukkitLocation.from(leftChest.getLocation());
+        Location rightLocation = BukkitLocation.from(rightChest.getLocation());
 
         // Determine primary location: smaller X, then smaller Z (lexicographically)
         Location primaryLocation;

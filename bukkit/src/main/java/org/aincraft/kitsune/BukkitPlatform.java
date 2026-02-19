@@ -4,7 +4,6 @@ import com.google.common.base.Preconditions;
 import org.aincraft.kitsune.api.serialization.TagProviderRegistry;
 import org.aincraft.kitsune.config.ConfigurationFactory;
 import org.bukkit.Bukkit;
-import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.nio.file.Path;
@@ -59,6 +58,6 @@ public final class BukkitPlatform implements Platform {
     org.bukkit.World bukkitWorld = Bukkit.getWorld(worldName);
     Preconditions.checkArgument(bukkitWorld != null, "Could not locate world");
     org.bukkit.Location bukkitLocation = new org.bukkit.Location(bukkitWorld, x, y, z);
-    return new BukkitLocation(bukkitLocation);
+    return BukkitLocation.from(bukkitLocation);
   }
 }
