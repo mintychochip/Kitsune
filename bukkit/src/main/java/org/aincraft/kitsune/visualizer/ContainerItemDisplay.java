@@ -1,9 +1,9 @@
 package org.aincraft.kitsune.visualizer;
 
+import org.aincraft.kitsune.BukkitLocation;
 import org.aincraft.kitsune.config.KitsuneConfig;
 import org.aincraft.kitsune.config.KitsuneConfigInterface;
 import org.aincraft.kitsune.model.SearchResult;
-import org.aincraft.kitsune.util.BukkitLocationFactory;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.entity.Display;
@@ -62,7 +62,7 @@ public class ContainerItemDisplay {
             return;
         }
 
-        Location bukkitLoc = BukkitLocationFactory.toBukkitLocationOrNull(result.location());
+        Location bukkitLoc = BukkitLocation.toBukkitOrNull(result.location());
         if (bukkitLoc == null) {
             logger.info("[ItemDisplay] BukkitLocation is null");
             return;

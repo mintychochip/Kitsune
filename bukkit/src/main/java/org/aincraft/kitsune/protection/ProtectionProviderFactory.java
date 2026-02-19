@@ -3,9 +3,9 @@ package org.aincraft.kitsune.protection;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.logging.Logger;
+import org.aincraft.kitsune.BukkitLocation;
 import org.aincraft.kitsune.config.KitsuneConfig;
 import org.aincraft.kitsune.config.KitsuneConfigInterface;
-import org.aincraft.kitsune.util.BukkitLocationFactory;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.block.Block;
@@ -109,7 +109,7 @@ public final class ProtectionProviderFactory {
 
         @Override
         public boolean canAccess(UUID playerId, org.aincraft.kitsune.Location location) {
-            Location loc = BukkitLocationFactory.toBukkitLocation(location);
+            Location loc = BukkitLocation.toBukkit(location);
             Block block = loc.getBlock();
             Player player = Bukkit.getPlayer(playerId);
           return bolt.canAccess(block, player, "bolt.access");

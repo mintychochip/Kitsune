@@ -1,6 +1,7 @@
 package org.aincraft.kitsune.indexing;
 
 import org.aincraft.kitsune.api.ContainerLocations;
+import org.aincraft.kitsune.BukkitLocation;
 import org.aincraft.kitsune.Location;
 import org.aincraft.kitsune.api.indexing.SerializedItem;
 import org.aincraft.kitsune.config.KitsuneConfigInterface;
@@ -8,7 +9,6 @@ import org.aincraft.kitsune.embedding.EmbeddingService;
 import java.util.logging.Logger;
 import org.aincraft.kitsune.serialization.BukkitItemSerializer;
 import org.aincraft.kitsune.storage.KitsuneStorage;
-import org.aincraft.kitsune.util.BukkitLocationFactory;
 import org.bukkit.block.Container;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
@@ -43,7 +43,7 @@ public class BukkitContainerIndexer extends ContainerIndexer {
      * @param items the Bukkit items to index
      */
     public void scheduleIndex(ContainerLocations locations, ItemStack[] items) {
-        List<SerializedItem> serializedItems = itemSerializer.serializeItemsToChunks(items);
+        List<SerializedItem> serializedItems = itemSerializer.serialize(items);
         scheduleIndex(locations, serializedItems);
     }
 
@@ -60,8 +60,8 @@ public class BukkitContainerIndexer extends ContainerIndexer {
             return;
         }
 
-        Location locationData = BukkitLocationFactory.toLocationData(location);
-        List<SerializedItem> serializedItems = itemSerializer.serializeItemsToChunks(items);
+        Location locationData = BukkitLocation.from(location);
+        List<SerializedItem> serializedItems = itemSerializer.serialize(items);
         scheduleIndex(ContainerLocations.single(locationData), serializedItems);
     }
 
@@ -98,7 +98,7 @@ public class BukkitContainerIndexer extends ContainerIndexer {
                         .thenAccept(locOpt -> {
                             locOpt.ifPresent(loc -> {
                                 // Must get block on main thread
-                                org.bukkit.Location bukkitLoc = BukkitLocationFactory.toBukkitLocation(loc);
+                                org.bukkit.Location bukkitLoc = BukkitLocation.toBukkit(loc);
                                 if (bukkitLoc != null && bukkitLoc.getWorld() != null) {
                                     // Verify still in radius (R-tree uses bounding box, need exact check)
                                     if (center.distance(bukkitLoc) <= radius) {
@@ -131,8 +131,8 @@ public class BukkitContainerIndexer extends ContainerIndexer {
             return;
         }
 
-        Location locationData = BukkitLocationFactory.toLocationData(location);
-        List<SerializedItem> serializedItems = itemSerializer.serializeItemsToChunks(items);
+        Location locationData = BukkitLocation.from(location);
+        List<SerializedItem> serializedItems = itemSerializer.serialize(items);
 
         // Create a future that we'll complete when indexing is done
         CompletableFuture<Void> completionFuture = new CompletableFuture<>();

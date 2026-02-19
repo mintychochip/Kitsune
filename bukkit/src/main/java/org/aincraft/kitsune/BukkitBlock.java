@@ -15,7 +15,7 @@ public record BukkitBlock(org.bukkit.block.Block block, String type, String worl
     @Nullable
     Inventory inventory = null;
     if (state instanceof Container container) {
-      inventory = new BukkitInventory(container.getInventory());
+      inventory = BukkitInventory.from(container.getInventory());
     }
     return new BukkitBlock(block, blockType.toString(), block.getWorld().toString(), inventory);
   }

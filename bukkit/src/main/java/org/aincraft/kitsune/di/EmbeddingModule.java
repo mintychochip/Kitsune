@@ -3,6 +3,7 @@ package org.aincraft.kitsune.di;
 import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
 import com.google.inject.Singleton;
+import com.google.inject.name.Named;
 import org.aincraft.kitsune.config.KitsuneConfigInterface;
 import org.aincraft.kitsune.embedding.EmbeddingService;
 import org.aincraft.kitsune.embedding.EmbeddingServiceFactory;
@@ -31,7 +32,7 @@ public class EmbeddingModule extends AbstractModule {
         return service;
     }
 
-    @Provides @Singleton @EmbeddingDimension
+    @Provides @Singleton @Named("embeddingDimension")
     int provideDimension(EmbeddingDimensionHolder holder) {
         return holder.getDimension();
     }

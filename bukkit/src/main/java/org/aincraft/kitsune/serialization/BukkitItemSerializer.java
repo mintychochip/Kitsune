@@ -17,11 +17,9 @@ import java.util.List;
  */
 public final class BukkitItemSerializer {
     private final ItemSerializationLogic logic;
-    private final BukkitItemAdapter adapter;
 
     public BukkitItemSerializer(TagProviderRegistry tagRegistry) {
         this.logic = new ItemSerializationLogic(tagRegistry);
-        this.adapter = new BukkitItemAdapter();
     }
 
     /**
@@ -42,7 +40,7 @@ public final class BukkitItemSerializer {
             return Collections.emptyList();
         }
         List<ItemStack> itemList = Arrays.asList(items);
-        return logic.serialize(adapter, itemList);
+        return logic.serialize(BukkitItemAdapter.INSTANCE, itemList);
     }
 
     /**
@@ -53,24 +51,6 @@ public final class BukkitItemSerializer {
             return new ContainerNode("inventory", null, null, 0, Collections.emptyList());
         }
         List<ItemStack> itemList = Arrays.asList(items);
-        return logic.serializeTree(adapter, itemList);
-    }
-
-    /**
-     * Legacy method for backward compatibility.
-     * @deprecated Use {@link #serialize(ItemStack[])} instead
-     */
-    @Deprecated
-    public List<SerializedItem> serializeItemsToChunks(ItemStack[] items) {
-        return serialize(items);
-    }
-
-    /**
-     * Legacy method for backward compatibility.
-     * @deprecated Use {@link #serializeTree(ItemStack[])} instead
-     */
-    @Deprecated
-    public ContainerNode serializeItemsToChunksTree(ItemStack[] items) {
-        return serializeTree(items);
+        return logic.serializeTree(BukkitItemAdapter.INSTANCE, itemList);
     }
 }

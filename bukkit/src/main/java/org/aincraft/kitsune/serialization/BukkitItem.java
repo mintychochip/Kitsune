@@ -11,6 +11,7 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.event.HoverEvent;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer;
+import org.aincraft.kitsune.BukkitInventory;
 import org.aincraft.kitsune.Inventory;
 import org.aincraft.kitsune.Item;
 import org.bukkit.Material;
@@ -286,14 +287,14 @@ public final class BukkitItem implements Item {
     if (itemStack.hasData(DataComponentTypes.CONTAINER)) {
       ItemContainerContents container = itemStack.getData(DataComponentTypes.CONTAINER);
       if (container != null && !container.contents().isEmpty()) {
-        return Optional.of(new ItemContainerInventory(new ArrayList<>(container.contents())));
+        return Optional.of(BukkitInventory.from(new ArrayList<>(container.contents())));
       }
     }
     // Check for bundle contents
     if (itemStack.hasData(DataComponentTypes.BUNDLE_CONTENTS)) {
       BundleContents bundle = itemStack.getData(DataComponentTypes.BUNDLE_CONTENTS);
       if (bundle != null && !bundle.contents().isEmpty()) {
-        return Optional.of(new ItemContainerInventory(new ArrayList<>(bundle.contents())));
+        return Optional.of(BukkitInventory.from(new ArrayList<>(bundle.contents())));
       }
     }
     return Optional.empty();

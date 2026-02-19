@@ -3,11 +3,8 @@ package org.aincraft.kitsune.serialization;
 import org.aincraft.kitsune.Item;
 import org.bukkit.inventory.ItemStack;
 
-/**
- * Bukkit adapter for item serialization.
- * Adapts ItemStack to the Item interface.
- */
-public class BukkitItemAdapter implements ItemAdapter<ItemStack> {
+public enum BukkitItemAdapter implements ItemAdapter<ItemStack> {
+    INSTANCE;
 
     @Override
     public Item toItem(ItemStack item) {
