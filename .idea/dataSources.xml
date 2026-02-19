@@ -29,5 +29,19 @@
       <jdbc-url>jdbc:sqlite:$PROJECT_DIR$/bukkit/run/plugins/Kitsune/metadata.db</jdbc-url>
       <working-dir>$ProjectFileDir$</working-dir>
     </data-source>
+    <data-source source="LOCAL" name="metadata [2]" uuid="89e9ee22-97d6-4476-883e-efd3232441d1">
+      <driver-ref>sqlite.xerial</driver-ref>
+      <synchronize>true</synchronize>
+      <jdbc-driver>org.sqlite.JDBC</jdbc-driver>
+      <jdbc-url>jdbc:sqlite:$PROJECT_DIR$/bukkit/run/plugins/KitsuneSS/metadata.db</jdbc-url>
+      <working-dir>$ProjectFileDir$</working-dir>
+    </data-source>
+    <data-source source="LOCAL" name="embedding_cache [2]" uuid="0cf83f1e-fd45-4568-adf4-df03f06cd4e7">
+      <driver-ref>sqlite.xerial</driver-ref>
+      <synchronize>true</synchronize>
+      <jdbc-driver>org.sqlite.JDBC</jdbc-driver>
+      <jdbc-url>jdbc:sqlite:$PROJECT_DIR$/bukkit/run/plugins/KitsuneSS/embedding_cache.db</jdbc-url>
+      <working-dir>$ProjectFileDir$</working-dir>
+    </data-source>
   </component>
 </project>
