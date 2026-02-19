@@ -136,6 +136,10 @@ public final class CachedEmbeddingService implements EmbeddingService {
         return cache.flush();
     }
 
+    // TODO: PERF - Hash collision risk in cache key
+    // Current: hashCode() + length can collide for different strings
+    // Fix: Use stronger hash like XXH3 or MurmurHash3 for production safety
+    // Risk: Different item descriptions could return wrong cached embedding
     /**
      * Fast cache key: packs hashCode + length into a long.
      * No string allocation, just primitive operations.

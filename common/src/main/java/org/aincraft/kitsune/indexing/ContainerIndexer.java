@@ -106,6 +106,10 @@ public class ContainerIndexer {
         long timestamp = System.currentTimeMillis();
         List<CompletableFuture<ContainerChunk>> chunkFutures = new ArrayList<>();
 
+        // TODO: PERF - Sequential embed() calls instead of batch
+        // Current: Each item calls embed() separately, missing batch optimization
+        // Fix: Collect all texts, call embedBatch() once, then create chunks in parallel
+        // This would use the ONNX batch inference which is much faster
         for (int i = 0; i < serializedItems.size(); i++) {
             final int chunkIndex = i;
             final SerializedItem serialized = serializedItems.get(i);
@@ -113,6 +117,8 @@ public class ContainerIndexer {
             // Normalize to lowercase for better embedding consistency
             String embeddingText = serialized.embeddingText().toLowerCase();
 
+            // TODO: PERF - Diagnostic logging on every chunk embed
+            // These info logs fire on every index operation, should be gated behind debug flag
             // Log what we're embedding (DIAGNOSTIC: Full embedding text)
             logger.info("=== DIAGNOSTIC: Chunk " + chunkIndex + " ===");
             logger.info("Container: " + containerId);

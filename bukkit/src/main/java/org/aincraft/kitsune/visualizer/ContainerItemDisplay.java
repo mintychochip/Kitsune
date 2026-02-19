@@ -136,11 +136,11 @@ public class ContainerItemDisplay {
             locationItemIndices.put(locKey, itemIndices);
             locationCenters.put(locKey, bukkitLoc.clone());
 
-            // Spawn TextDisplay showing item count
+            // Spawn TextDisplay showing item count - start at chest center
             int itemCount = topItems.size();
-            Location textLoc = bukkitLoc.clone().add(0.5, heightOffset + 0.8, 0.5);
+            Location textStartLoc = bukkitLoc.clone().add(0.5, 0.5, 0.5);
             try {
-                TextDisplay textDisplay = world.spawn(textLoc, TextDisplay.class, entity -> {
+                TextDisplay textDisplay = world.spawn(textStartLoc, TextDisplay.class, entity -> {
                     entity.text(net.kyori.adventure.text.Component.text()
                         .append(net.kyori.adventure.text.Component.text("x" + itemCount,
                             net.kyori.adventure.text.format.NamedTextColor.YELLOW))
@@ -314,12 +314,44 @@ public class ContainerItemDisplay {
         logger.info("Cleaned up all ItemDisplay entities");
     }
 
+    // Animation phases
+    private static final int EMERGE_DURATION = 15; // ticks for emerge animation
+
+    /**
+     * Easing function - ease out back for a satisfying "pop" effect
+     */
+    private double easeOutBack(double t) {
+        double c1 = 1.70158;
+        double c3 = c1 + 1;
+        return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+    }
+
     /**
      * Starts the animation task for a specific location.
      */
     private void startAnimation(String locKey) {
         Location centerLoc = locationCenters.get(locKey);
         if (centerLoc == null) return;
+
+        // Initialize all displays at chest center (inside the chest)
+        List<ItemDisplay> displays = locationDisplays.get(locKey);
+        if (displays != null) {
+            for (ItemDisplay display : displays) {
+                if (display != null && !display.isDead()) {
+                    // Start at center of chest, slightly inside
+                    Location startLoc = centerLoc.clone().add(0.5, 0.5, 0.5);
+                    display.teleport(startLoc);
+                    // Start small
+                    Transformation startTransform = new Transformation(
+                        new Vector3f(0, 0, 0),
+                        new AxisAngle4f(0, 0, 0, 1),
+                        new Vector3f(0.01f, 0.01f, 0.01f),
+                        new AxisAngle4f(0, 0, 0, 1)
+                    );
+                    display.setTransformation(startTransform);
+                }
+            }
+        }
 
         BukkitRunnable task = new BukkitRunnable() {
             private int tick = 0;
@@ -351,17 +383,47 @@ public class ContainerItemDisplay {
                         continue;
                     }
 
-                    // Keep items in fixed circle above chest, add gentle bobbing
-                    double x = Math.cos(initialAngle) * radius;
-                    double z = Math.sin(initialAngle) * radius;
+                    double x, y, scale;
+                    double bobOffset = 0;
 
-                    // Bobbing motion (up/down oscillation) - staggered per item
-                    double phaseOffset = (2 * Math.PI * itemIndex) / totalItems;
-                    double bobOffset = Math.sin(tick * 0.15 + phaseOffset) * 0.2;
+                    if (tick < EMERGE_DURATION) {
+                        // Emerge animation - items come out of chest
+                        double progress = (double) tick / EMERGE_DURATION;
+                        double easedProgress = easeOutBack(progress);
 
-                    // Update position
-                    Location newLoc = centerLoc.clone().add(x + 0.5, heightOffset + bobOffset, z + 0.5);
-                    display.teleport(newLoc);
+                        // Stagger each item slightly
+                        double staggerDelay = itemIndex * 0.1;
+                        double adjustedProgress = Math.max(0, Math.min(1, (progress - staggerDelay) / (1 - staggerDelay)));
+                        double adjustedEased = easeOutBack(adjustedProgress);
+
+                        // Interpolate from center to circle position
+                        double targetX = Math.cos(initialAngle) * radius;
+                        double targetZ = Math.sin(initialAngle) * radius;
+
+                        x = targetX * adjustedEased;
+                        double z = targetZ * adjustedEased;
+                        y = heightOffset * adjustedEased;
+
+                        // Scale grows from tiny to full
+                        scale = 0.01 + 0.49 * adjustedEased;
+
+                        Location newLoc = centerLoc.clone().add(x + 0.5, y + 0.5, z + 0.5);
+                        display.teleport(newLoc);
+                    } else {
+                        // Normal floating animation after emerge
+                        x = Math.cos(initialAngle) * radius;
+                        double z = Math.sin(initialAngle) * radius;
+
+                        // Bobbing motion (up/down oscillation) - staggered per item
+                        int floatTick = tick - EMERGE_DURATION;
+                        double phaseOffset = (2 * Math.PI * itemIndex) / totalItems;
+                        bobOffset = Math.sin(floatTick * 0.15 + phaseOffset) * 0.2;
+
+                        Location newLoc = centerLoc.clone().add(x + 0.5, heightOffset + bobOffset, z + 0.5);
+                        display.teleport(newLoc);
+
+                        scale = 0.5;
+                    }
 
                     // Apply spin
                     if (((KitsuneConfig) config).visualizer().spinEnabled()) {
@@ -372,11 +434,29 @@ public class ContainerItemDisplay {
                         transformation = new Transformation(
                             transformation.getTranslation(),
                             spinRotation,
-                            transformation.getScale(),
+                            new Vector3f((float) scale, (float) scale, (float) scale),
                             new AxisAngle4f(transformation.getRightRotation())
                         );
 
                         display.setTransformation(transformation);
+                    }
+                }
+
+                // Animate text display
+                TextDisplay textDisplay = locationTextDisplays.get(locKey);
+                if (textDisplay != null && !textDisplay.isDead()) {
+                    double textHeightOffset = heightOffset + 0.8;
+                    if (tick < EMERGE_DURATION) {
+                        double progress = (double) tick / EMERGE_DURATION;
+                        double easedProgress = easeOutBack(progress);
+                        double textY = textHeightOffset * easedProgress;
+                        Location textLoc = centerLoc.clone().add(0.5, textY + 0.5, 0.5);
+                        textDisplay.teleport(textLoc);
+                    } else {
+                        int floatTick = tick - EMERGE_DURATION;
+                        double textBob = Math.sin(floatTick * 0.15) * 0.1;
+                        Location textLoc = centerLoc.clone().add(0.5, textHeightOffset + textBob, 0.5);
+                        textDisplay.teleport(textLoc);
                     }
                 }
 

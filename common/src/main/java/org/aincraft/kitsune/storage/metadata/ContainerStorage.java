@@ -271,6 +271,10 @@ public final class ContainerStorage {
         }
     }
 
+    // TODO: PERF - Per-row INSERT is inefficient for bulk indexing
+    // Current: 100 chunks = 100 separate INSERT statements + connections
+    // Fix: Add saveChunksBatch(List<ChunkData>) using single transaction + batch INSERT
+    // Example: INSERT INTO ... VALUES (...), (...), (...) with executeBatch()
     public void saveChunk(UUID containerId, UUID chunkId, int ordinal, ContainerChunk chunk) {
         try (Connection c = dataSource.getConnection();
              PreparedStatement ps = c.prepareStatement("INSERT OR REPLACE INTO container_chunks (id, container_id, ordinal, chunk_index, content_text, timestamp, container_path) VALUES (?, ?, ?, ?, ?, ?, ?)")) {

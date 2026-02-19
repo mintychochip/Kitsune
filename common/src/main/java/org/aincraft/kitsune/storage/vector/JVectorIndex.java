@@ -160,6 +160,8 @@ public final class JVectorIndex implements VectorIndex {
         }
     }
 
+    // TODO: PERF - addVector is just a HashMap put but callers block on .join()
+    // Consider: fire-and-forget returns, or addVectorsBatch() for bulk operations
     @Override
     public CompletableFuture<Void> addVector(int databaseOrdinal, float[] embedding) {
         return CompletableFuture.runAsync(() -> {
@@ -207,9 +209,13 @@ public final class JVectorIndex implements VectorIndex {
      * @param allowedDatabaseOrdinals optional set of DATABASE ordinals to filter by; null means no filtering
      * @return list of search results with DATABASE ordinals
      */
+    // TODO: PERF - Search triggers full rebuild if indexDirty, causing unpredictable latency
+    // Current: Search blocks on O(n log n) graph rebuild if any writes occurred
+    // Fix: Background scheduled rebuild, or accept stale index with dirty flag check
     private CompletableFuture<List<VectorSearchResult>> search(
             float[] queryEmbedding, int limit, Set<Integer> allowedDatabaseOrdinals) {
         return CompletableFuture.supplyAsync(() -> {
+            // TODO: PERF - Inline rebuild on search path causes latency spikes
             // Rebuild index if needed - BEFORE acquiring read lock to avoid deadlock
             if (indexDirty || graphIndex == null) {
                 indexLock.writeLock().lock();
@@ -234,6 +240,8 @@ public final class JVectorIndex implements VectorIndex {
                 VectorFloat<?> queryVector = toVectorFloat(queryEmbedding);
                 List<VectorSearchResult> results = new ArrayList<>();
 
+                // TODO: PERF - Allocates new ArrayList on every search (hot path)
+                // Consider: Reuse/cached vector list, or lazy initialization
                 // Build list of vectors for search (in internal ordinal order)
                 List<VectorFloat<?>> searchVectors = new ArrayList<>();
                 for (int i = 0; i < internalToDatabaseOrdinal.size(); i++) {

@@ -28,6 +28,9 @@ import org.aincraft.kitsune.embedding.download.ModelSpec;
 public final class OnnxEmbeddingService implements EmbeddingService {
     private final Platform platform;
     private final ModelSpec spec;
+    // TODO: PERF - Virtual threads not ideal for CPU-bound ONNX inference
+    // Virtual threads excel at I/O but ONNX inference is CPU-bound
+    // Consider: Fixed thread pool sized to Runtime.getRuntime().availableProcessors()
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
     private final boolean autoDownloadEnabled;
 

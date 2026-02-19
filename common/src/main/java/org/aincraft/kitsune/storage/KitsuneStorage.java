@@ -46,6 +46,10 @@ public final class KitsuneStorage {
         logger.info("KitsuneStorage initialized. Max ordinal: " + nextOrdinal.get());
     }
 
+    // TODO: PERF - Blocking joins defeat async design
+    // Current: Sequential DB saves + blocking .join() on each addVector + blocking rebuild
+    // Fix: Batch DB writes in single transaction, use addVectorsBatch(), defer rebuild
+    // Impact: With 100 chunks, this serializes 100 DB writes + 100 vector adds + full graph rebuild
     public CompletableFuture<Void> indexChunks(UUID containerId, List<ContainerChunk> chunks) {
         if (chunks == null || chunks.isEmpty()) {
             logger.info("No chunks to index for container " + containerId);
@@ -57,17 +61,25 @@ public final class KitsuneStorage {
         return CompletableFuture.runAsync(() -> {
             containerStorage.deleteChunksByContainer(containerId);
 
+            // TODO: PERF - Use saveChunksBatch() for single transaction instead of per-row INSERTs
             for (ContainerChunk chunk : chunks) {
                 int ordinal = nextOrdinal.getAndIncrement();
                 UUID chunkId = UUID.randomUUID();
                 containerStorage.saveChunk(containerId, chunkId, ordinal, chunk);
+                // TODO: PERF - Remove .join() - collect futures and use CompletableFuture.allOf()
+                // Current blocks on each HashMap put (no actual index work happens here)
                 vectorIndex.addVector(ordinal, chunk.embedding()).join();
             }
 
+            // TODO: PERF - Remove blocking rebuild from write path
+            // Instead: mark dirty, rebuild lazily before search or on background schedule
             vectorIndex.rebuildIndex().join();
         });
     }
 
+    // TODO: PERF - Search may trigger unexpected index rebuild
+    // If indexDirty=true, search() blocks on full HNSW rebuild before returning results
+    // Fix: Use stale index for search, rebuild in background, or accept dirty reads
     public CompletableFuture<List<SearchResult>> search(float[] embedding, int limit, String worldName) {
         if (embedding == null || embedding.length == 0) {
             return CompletableFuture.failedFuture(
@@ -224,6 +236,9 @@ public final class KitsuneStorage {
         });
     }
 
+    // TODO: PERF - Same blocking rebuild issue as indexChunks()
+    // Delete triggers full HNSW rebuild synchronously
+    // Fix: Mark dirty, rebuild lazily
     public CompletableFuture<Void> delete(Location location) {
         if (location == null) {
             return CompletableFuture.failedFuture(

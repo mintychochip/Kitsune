@@ -56,6 +56,9 @@ public class ItemDataCache {
     }
   }
 
+  // TODO: PERF - Hash collision risk with hashCode() as cache key
+  // Current: Different JSON strings can produce same hashCode, causing wrong cache hits
+  // Fix: Use stronger hash (XXH3/MurmurHash3) or include more distinguishing data
   /**
    * Get cached item data or extract and cache it.
    */

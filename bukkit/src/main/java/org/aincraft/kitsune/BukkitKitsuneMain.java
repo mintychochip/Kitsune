@@ -209,7 +209,7 @@ public final class BukkitKitsuneMain extends JavaPlugin {
                 .then(Commands.literal("stats")
                     .requires(source -> source.getSender().hasPermission("kitsune.admin"))
                     .executes(context -> {
-                        if (!initService.isInitialized()) {
+                        if (!lifecycleService.isInitialized()) {
                             context.getSource().getSender().sendMessage("§cKitsune is still initializing...");
                             return 0;
                         }
@@ -246,7 +246,7 @@ public final class BukkitKitsuneMain extends JavaPlugin {
                 .then(Commands.literal("purge")
                     .requires(source -> source.getSender().hasPermission("kitsune.admin"))
                     .executes(context -> {
-                        if (!initService.isInitialized()) {
+                        if (!lifecycleService.isInitialized()) {
                             context.getSource().getSender().sendMessage("§cKitsune is still initializing...");
                             return 0;
                         }
@@ -369,12 +369,12 @@ public final class BukkitKitsuneMain extends JavaPlugin {
             return 0;
         }
 
-        if (!initService.isInitialized()) {
+        if (!lifecycleService.isInitialized()) {
             source.getSender().sendMessage("§cKitsune is still initializing. Please wait...");
             return 0;
         }
 
-        if (initService.hasProviderMismatch()) {
+        if (lifecycleService.hasProviderMismatch()) {
             source.getSender().sendMessage("§cEmbedding provider has changed. Run '/kitsune purge' first.");
             return 0;
         }
@@ -983,7 +983,7 @@ public final class BukkitKitsuneMain extends JavaPlugin {
     }
 
     private int executeGetThreshold(CommandSourceStack source) {
-        if (!initService.isInitialized()) {
+        if (!lifecycleService.isInitialized()) {
             source.getSender().sendMessage("§cKitsune is still initializing...");
             return 0;
         }
@@ -1002,7 +1002,7 @@ public final class BukkitKitsuneMain extends JavaPlugin {
     }
 
     private int executeSetThreshold(CommandSourceStack source, float value) {
-        if (!initService.isInitialized()) {
+        if (!lifecycleService.isInitialized()) {
             source.getSender().sendMessage("§cKitsune is still initializing...");
             return 0;
         }
@@ -1238,7 +1238,7 @@ public final class BukkitKitsuneMain extends JavaPlugin {
         return protectionProvider.orElse(null);
     }
     public boolean isInitialized() {
-        return initService.isInitialized();
+        return lifecycleService.isInitialized();
     }
 
     /**

@@ -1,7 +1,6 @@
 package org.aincraft.kitsune;
 
 import org.bukkit.Bukkit;
-import org.bukkit.World;
 
 public record BukkitLocation(org.bukkit.Location location, int blockX, int blockY,
                              int blockZ) implements Location {
@@ -14,7 +13,7 @@ public record BukkitLocation(org.bukkit.Location location, int blockX, int block
   }
 
   public static org.bukkit.Location toBukkit(Location data) {
-    World world = Bukkit.getWorld(data.getWorld().getName());
+    org.bukkit.World world = Bukkit.getWorld(data.getWorld().getName());
     if (world == null) {
       throw new IllegalArgumentException("World is not loaded: " + data.getWorld().getName());
     }
@@ -23,7 +22,7 @@ public record BukkitLocation(org.bukkit.Location location, int blockX, int block
 
   public static org.bukkit.Location toBukkitOrNull(Location data) {
     if (data == null) return null;
-    World world = Bukkit.getWorld(data.getWorld().getName());
+    org.bukkit.World world = Bukkit.getWorld(data.getWorld().getName());
     if (world == null) return null;
     return new org.bukkit.Location(world, data.blockX(), data.blockY(), data.blockZ());
   }
