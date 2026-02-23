@@ -3,6 +3,7 @@ package org.aincraft.kitsune.model.tree;
 import com.google.common.base.Preconditions;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -192,9 +193,21 @@ public final class SearchResultTreeBuilder {
     }
 
     try {
-      JsonArray jsonArray = GSON.fromJson(fullContent, JsonArray.class);
-      if (jsonArray != null && jsonArray.size() > 0) {
-        JsonObject itemObj = jsonArray.get(0).getAsJsonObject();
+      JsonElement elem = GSON.fromJson(fullContent, JsonElement.class);
+      JsonObject itemObj = null;
+
+      if (elem != null) {
+        if (elem.isJsonObject()) {
+          itemObj = elem.getAsJsonObject();
+        } else if (elem.isJsonArray()) {
+          JsonArray jsonArray = elem.getAsJsonArray();
+          if (jsonArray.size() > 0 && jsonArray.get(0).isJsonObject()) {
+            itemObj = jsonArray.get(0).getAsJsonObject();
+          }
+        }
+      }
+
+      if (itemObj != null) {
         String displayName = extractDisplayName(itemObj);
         int slotIndex = extractSlotIndex(itemObj);
         int amount = extractAmount(itemObj);
