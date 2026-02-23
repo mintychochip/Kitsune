@@ -1,6 +1,5 @@
 package org.aincraft.kitsune.embedding;
 
-import org.aincraft.kitsune.Platform;
 import org.aincraft.kitsune.cache.EmbeddingCache;
 
 import java.util.ArrayList;
@@ -10,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 /**
@@ -18,12 +18,12 @@ import java.util.stream.Collectors;
  */
 public final class CachedEmbeddingService implements EmbeddingService {
 
-    private final Platform platform;
+    private final Logger logger;
     private final EmbeddingService delegate;
     private final EmbeddingCache cache;
 
-    public CachedEmbeddingService(Platform platform, EmbeddingService delegate, EmbeddingCache cache) {
-        this.platform = platform;
+    public CachedEmbeddingService(Logger logger, EmbeddingService delegate, EmbeddingCache cache) {
+        this.logger = logger;
         this.delegate = delegate;
         this.cache = cache;
     }
@@ -41,20 +41,19 @@ public final class CachedEmbeddingService implements EmbeddingService {
                 .thenCompose(cachedEmbedding -> {
                     if (cachedEmbedding.isPresent()) {
                         float[] embedding = cachedEmbedding.get();
-                        // Validate the cached embedding
                         if (embedding != null && embedding.length > 0) {
-                            platform.getLogger().info("Embedding cache hit for: " + truncate(text, 50) + "...");
+                            logger.fine("Embedding cache hit for: " + truncate(text, 50) + "...");
                             return CompletableFuture.completedFuture(embedding);
                         } else {
-                            platform.getLogger().warning("Cached embedding was null or empty for: " + truncate(text, 50) + ", regenerating...");
+                            logger.warning("Cached embedding was null or empty for: " + truncate(text, 50) + ", regenerating...");
                         }
                     }
 
-                    platform.getLogger().info("Generating new embedding for: " + truncate(text, 50) + "...");
+                    logger.fine("Generating new embedding for: " + truncate(text, 50) + "...");
                     return delegate.embed(text, taskType)
                             .thenCompose(embedding -> {
                                 if (embedding == null || embedding.length == 0) {
-                                    platform.getLogger().warning("Delegate returned null/empty embedding for: " + truncate(text, 50));
+                                    logger.warning("Delegate returned null/empty embedding for: " + truncate(text, 50));
                                     return CompletableFuture.completedFuture(embedding);
                                 }
                                 return cache.put(key, embedding)
@@ -69,13 +68,11 @@ public final class CachedEmbeddingService implements EmbeddingService {
             return CompletableFuture.completedFuture(new ArrayList<>());
         }
 
-        // Build cache keys
         List<Long> cacheKeys = texts.stream()
                 .mapToLong(CachedEmbeddingService::toCacheKey)
                 .boxed()
                 .collect(Collectors.toList());
 
-        // Batch cache lookup
         return cache.getAll(cacheKeys)
                 .thenCompose(cachedMap -> {
                     List<Integer> missIndices = new ArrayList<>();
@@ -93,7 +90,7 @@ public final class CachedEmbeddingService implements EmbeddingService {
                     }
 
                     int cacheHits = texts.size() - missIndices.size();
-                    platform.getLogger().info("Batch cache: " + cacheHits + " hits, " + missTexts.size() + " misses");
+                    logger.fine("Batch cache: " + cacheHits + " hits, " + missTexts.size() + " misses");
 
                     if (missTexts.isEmpty()) {
                         return CompletableFuture.completedFuture(toList(results));
@@ -136,14 +133,6 @@ public final class CachedEmbeddingService implements EmbeddingService {
         return cache.flush();
     }
 
-    // TODO: PERF - Hash collision risk in cache key
-    // Current: hashCode() + length can collide for different strings
-    // Fix: Use stronger hash like XXH3 or MurmurHash3 for production safety
-    // Risk: Different item descriptions could return wrong cached embedding
-    /**
-     * Fast cache key: packs hashCode + length into a long.
-     * No string allocation, just primitive operations.
-     */
     private static long toCacheKey(String text) {
         return ((long) text.hashCode() << 32) | text.length();
     }

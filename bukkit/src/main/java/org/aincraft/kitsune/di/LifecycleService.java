@@ -14,7 +14,6 @@ import org.aincraft.kitsune.storage.ProviderMetadata;
 import org.aincraft.kitsune.storage.SearchHistoryStorage;
 import org.aincraft.kitsune.visualizer.ContainerItemDisplay;
 
-import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.logging.Logger;
@@ -28,8 +27,7 @@ public class LifecycleService {
     private final PlayerRadiusStorage playerRadiusStorage;
     private final ProviderMetadata providerMetadata;
     private final KitsuneConfig config;
-    private final EmbeddingDimensionHolder dimensionHolder;
-    private final Optional<BukkitContainerIndexer> containerIndexer;
+    private final BukkitContainerIndexer containerIndexer;
     private final ContainerItemDisplay itemDisplayVisualizer;
     private final ItemDataCache itemDataCache;
     private final @Named("searchHistoryExecutor") ExecutorService searchHistoryExecutor;
@@ -47,8 +45,7 @@ public class LifecycleService {
             PlayerRadiusStorage playerRadiusStorage,
             ProviderMetadata providerMetadata,
             KitsuneConfig config,
-            EmbeddingDimensionHolder dimensionHolder,
-            Optional<BukkitContainerIndexer> containerIndexer,
+            BukkitContainerIndexer containerIndexer,
             ContainerItemDisplay itemDisplayVisualizer,
             ItemDataCache itemDataCache,
             @Named("searchHistoryExecutor") ExecutorService searchHistoryExecutor,
@@ -60,7 +57,6 @@ public class LifecycleService {
         this.playerRadiusStorage = playerRadiusStorage;
         this.providerMetadata = providerMetadata;
         this.config = config;
-        this.dimensionHolder = dimensionHolder;
         this.containerIndexer = containerIndexer;
         this.itemDisplayVisualizer = itemDisplayVisualizer;
         this.itemDataCache = itemDataCache;
@@ -70,7 +66,6 @@ public class LifecycleService {
 
     public CompletableFuture<Void> initialize() {
         return embeddingService.initialize()
-            .thenRun(() -> dimensionHolder.setDimension(embeddingService.getDimension()))
             .thenRun(() -> storage.initialize())
             .thenCompose(v -> searchHistoryStorage.initialize()
                 .thenCompose(v2 -> playerRadiusStorage.initialize()))
@@ -85,8 +80,7 @@ public class LifecycleService {
     public void shutdown() {
         logger.info("Shutting down Kitsune services...");
 
-        containerIndexer.ifPresent(BukkitContainerIndexer::shutdown);
-
+        if (containerIndexer != null) containerIndexer.shutdown();
         if (storage != null) storage.shutdown();
         if (embeddingService != null) embeddingService.shutdown();
         if (searchHistoryStorage != null) searchHistoryStorage.close();
@@ -101,8 +95,8 @@ public class LifecycleService {
     }
 
     private void checkProviderMismatch() {
-        String currentProvider = ((KitsuneConfig) config).embedding().provider();
-        String currentModel = ((KitsuneConfig) config).embedding().model();
+        String currentProvider = config.embeddingProvider();
+        String currentModel = config.embeddingModel();
 
         providerMetadata.checkMismatch(currentProvider, currentModel).ifPresentOrElse(
             mismatch -> {

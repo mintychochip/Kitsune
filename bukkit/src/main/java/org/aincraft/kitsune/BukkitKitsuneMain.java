@@ -60,6 +60,7 @@ import org.bukkit.scheduler.BukkitTask;
 import com.google.inject.Guice;
 import com.google.inject.Injector;
 import com.google.inject.Key;
+import com.google.inject.Stage;
 import com.google.inject.TypeLiteral;
 import jakarta.inject.Inject;
 import org.aincraft.kitsune.di.KitsuneModule;
@@ -103,8 +104,8 @@ public final class BukkitKitsuneMain extends JavaPlugin {
     public void onEnable() {
         saveDefaultConfig();
 
-        // Create Guice injector
-        injector = Guice.createInjector(new KitsuneModule(this));
+        // Create Guice injector in DEVELOPMENT stage to prevent eager binding resolution
+        injector = Guice.createInjector(Stage.DEVELOPMENT, new KitsuneModule(this));
 
         // Inject this instance
         injector.injectMembers(this);
@@ -355,7 +356,7 @@ public final class BukkitKitsuneMain extends JavaPlugin {
         Player player = source.getSender() instanceof Player p ? p : null;
 
         // Determine effective radius with validation
-        int effectiveRadius = kitsuneConfig.search().radius();
+        int effectiveRadius = kitsuneConfig.searchRadius();
 
         if (customRadius != null) {
             if (player == null) {
@@ -378,7 +379,7 @@ public final class BukkitKitsuneMain extends JavaPlugin {
                 return 1;
             } else {
                 // Fallback: validate against config max radius
-                int configMaxRadius = kitsuneConfig.search().radius();
+                int configMaxRadius = kitsuneConfig.searchRadius();
                 if (customRadius > configMaxRadius) {
                     source.getSender().sendMessage("§cRadius " + customRadius + " exceeds server limit of " + configMaxRadius + " blocks.");
                     return 0;
@@ -492,7 +493,7 @@ public final class BukkitKitsuneMain extends JavaPlugin {
         }
 
         // Step 6: Record search in history after results are displayed
-        if (searchHistoryStorage != null && kitsuneConfig.history().enabled() && player != null) {
+        if (searchHistoryStorage != null && kitsuneConfig.historyEnabled() && player != null) {
             SearchHistoryEntry entry = SearchHistoryEntry.of(
                 player.getUniqueId(),
                 player.getName(),
@@ -917,7 +918,7 @@ public final class BukkitKitsuneMain extends JavaPlugin {
 
         // Auto-index the chest
         injector.getInstance(BukkitContainerIndexer.class).scheduleIndex(block.getLocation(), inventory.getContents());
-        player.sendMessage("§7Container will be indexed in " + kitsuneConfig.indexing().debounceDelayMs() + "ms...");
+        player.sendMessage("§7Container will be indexed in " + kitsuneConfig.indexingDebounceMs() + "ms...");
 
         return 1;
     }
@@ -937,14 +938,14 @@ public final class BukkitKitsuneMain extends JavaPlugin {
                 // Delete provider metadata and save new one
                 providerMetadata.delete();
                 providerMetadata.save(
-                    kitsuneConfig.embedding().provider(),
-                    kitsuneConfig.embedding().model()
+                    kitsuneConfig.embeddingProvider(),
+                    kitsuneConfig.embeddingModel()
                 );
 
                 source.getSender().sendMessage("§aPurge complete! All vectors and cache cleared.");
                 source.getSender().sendMessage("§7Provider metadata reset to: §f" +
-                    kitsuneConfig.embedding().provider() + "/" +
-                    kitsuneConfig.embedding().model());
+                    kitsuneConfig.embeddingProvider() + "/" +
+                    kitsuneConfig.embeddingModel());
             })
             .exceptionally(ex -> {
                 getLogger().log(Level.SEVERE, "Failed to purge", ex);
@@ -999,7 +1000,7 @@ public final class BukkitKitsuneMain extends JavaPlugin {
     }
 
     private int executeShowHistory(CommandSourceStack source, Player player, int limit) {
-        if (searchHistoryStorage == null || !kitsuneConfig.history().enabled()) {
+        if (searchHistoryStorage == null || !kitsuneConfig.historyEnabled()) {
             source.getSender().sendMessage("§cSearch history is disabled.");
             return 0;
         }
@@ -1045,7 +1046,7 @@ public final class BukkitKitsuneMain extends JavaPlugin {
     }
 
     private int executeClearHistory(CommandSourceStack source, Player player) {
-        if (searchHistoryStorage == null || !kitsuneConfig.history().enabled()) {
+        if (searchHistoryStorage == null || !kitsuneConfig.historyEnabled()) {
             source.getSender().sendMessage("§cSearch history is disabled.");
             return 0;
         }
@@ -1056,7 +1057,7 @@ public final class BukkitKitsuneMain extends JavaPlugin {
     }
 
     private int executeShowGlobalHistory(CommandSourceStack source, int limit) {
-        if (searchHistoryStorage == null || !kitsuneConfig.history().enabled()) {
+        if (searchHistoryStorage == null || !kitsuneConfig.historyEnabled()) {
             source.getSender().sendMessage("§cSearch history is disabled.");
             return 0;
         }
@@ -1176,7 +1177,7 @@ public final class BukkitKitsuneMain extends JavaPlugin {
             return 0;
         }
 
-        int defaultRadius = kitsuneConfig.search().radius();
+        int defaultRadius = kitsuneConfig.searchRadius();
 
         // Get the radius asynchronously
         playerRadiusStorage.getMaxRadius(player.getUniqueId())
@@ -1194,7 +1195,9 @@ public final class BukkitKitsuneMain extends JavaPlugin {
 
     @Override
     public void onDisable() {
-        lifecycleService.shutdown();
+        if (lifecycleService != null) {
+            lifecycleService.shutdown();
+        }
     }
 
     // Keep getters for backward compatibility
@@ -1237,7 +1240,7 @@ public final class BukkitKitsuneMain extends JavaPlugin {
 
     private void spawnHighlight(Location location, Player player, org.aincraft.kitsune.model.SearchResult searchResult) {
         // Check if ItemDisplay visualization is enabled
-        if (kitsuneConfig.visualizer().itemDisplayEnabled() && itemDisplayVisualizer != null && searchResult != null) {
+        if (kitsuneConfig.visualizerEnabled() && itemDisplayVisualizer != null && searchResult != null) {
             itemDisplayVisualizer.spawnItemDisplays(searchResult, player);
         } else {
             // Fallback to particles if ItemDisplay is disabled

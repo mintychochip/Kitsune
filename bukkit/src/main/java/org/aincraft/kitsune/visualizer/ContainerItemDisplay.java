@@ -252,7 +252,6 @@ public class ContainerItemDisplay {
             plugin.getServer().getScheduler().cancelTask(taskId);
         }
 
-        // Remove item displays
         List<ItemDisplay> displays = locationDisplays.remove(locKey);
         if (displays != null) {
             for (ItemDisplay display : displays) {
@@ -262,7 +261,6 @@ public class ContainerItemDisplay {
             }
         }
 
-        // Remove text display
         TextDisplay textDisplay = locationTextDisplays.remove(locKey);
         if (textDisplay != null && !textDisplay.isDead()) {
             textDisplay.remove();

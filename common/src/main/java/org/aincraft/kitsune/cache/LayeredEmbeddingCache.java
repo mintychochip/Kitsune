@@ -31,8 +31,6 @@ import javax.sql.DataSource;
  * Two-tier embedding cache with Caffeine L1 (in-memory) + SQLite L2 (persistent).
  * Uses long keys for zero-allocation cache lookups.
  */
-// TODO: PERF - Creates 2 executor services per cache instance
-// Consider: Accept shared executor in constructor to reduce thread pool overhead
 public final class LayeredEmbeddingCache implements EmbeddingCache {
     private static final int DEFAULT_MAX_L1_SIZE = 10000;
     private static final int BUFFER_POOL_SIZE = 32;
@@ -58,14 +56,10 @@ public final class LayeredEmbeddingCache implements EmbeddingCache {
     private record WriteEntry(long key, byte[] data, long timestamp) {}
 
     public LayeredEmbeddingCache(DataSource dataSource, Logger logger) {
-        this(dataSource, logger, DEFAULT_MAX_L1_SIZE);
-    }
-
-    public LayeredEmbeddingCache(DataSource dataSource, Logger logger, int maxL1Size) {
         this.dataSource = dataSource;
         this.logger = logger;
         this.l1Cache = Caffeine.newBuilder()
-            .maximumSize(maxL1Size)
+            .maximumSize(DEFAULT_MAX_L1_SIZE)
             .build();
         this.executor = Executors.newFixedThreadPool(MAX_EXECUTOR_THREADS, r -> {
             Thread t = new Thread(r, "embedding-cache-executor-" + r.hashCode());
@@ -350,8 +344,6 @@ public final class LayeredEmbeddingCache implements EmbeddingCache {
             }
         }
     }
-
-    // === ByteBuffer Pooling ===
 
     private ByteBuffer acquireBuffer(int minCapacity) {
         ByteBuffer buffer = bufferPool.pollFirst();

@@ -284,8 +284,6 @@ public final class KitsuneStorage {
         vectorIndex.shutdown();
     }
 
-    // Container position management
-
     public CompletableFuture<Void> registerContainerPositions(ContainerLocations locations) {
         if (locations == null) {
             return CompletableFuture.failedFuture(
@@ -317,8 +315,6 @@ public final class KitsuneStorage {
         }
         return CompletableFuture.runAsync(() -> containerStorage.deleteContainerPositions(primaryLocation));
     }
-
-    // Container management
 
     public CompletableFuture<UUID> getOrCreateContainer(ContainerLocations locations) {
         if (locations == null) {

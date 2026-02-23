@@ -5,6 +5,7 @@ import com.google.inject.Provides;
 import com.google.inject.Singleton;
 import com.google.inject.name.Named;
 import com.google.inject.multibindings.Multibinder;
+import com.google.inject.name.Names;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import org.aincraft.kitsune.BukkitPlatform;
@@ -29,13 +30,15 @@ import org.aincraft.kitsune.storage.ProviderMetadata;
 import org.aincraft.kitsune.storage.SearchHistoryStorage;
 import org.aincraft.kitsune.storage.metadata.ContainerStorage;
 import org.aincraft.kitsune.storage.vector.JVectorIndex;
+import org.aincraft.kitsune.api.indexing.ContainerLocationResolver;
+import org.aincraft.kitsune.cache.EmbeddingCache;
+import org.aincraft.kitsune.cache.LayeredEmbeddingCache;
 import org.aincraft.kitsune.util.BukkitContainerLocationResolver;
 import org.aincraft.kitsune.visualizer.ContainerItemDisplay;
 import org.bukkit.event.Listener;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.java.JavaPlugin;
 
-import javax.lang.model.type.NullType;
 import javax.sql.DataSource;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Proxy;
@@ -56,7 +59,15 @@ public class KitsuneModule extends AbstractModule {
 
     @Override
     protected void configure() {
-        // Bind listeners via multibinder
+        // Bind core instances first
+        bind(JavaPlugin.class).toInstance(plugin);
+        bind(Plugin.class).toInstance(plugin);
+        bind(Logger.class).annotatedWith(Names.named("Logger")).toInstance(plugin.getLogger());
+        bind(Path.class).toInstance(plugin.getDataFolder().toPath());
+
+        bind(EmbeddingServiceFactory.class).in(Singleton.class);
+        bind(ContainerLocationResolver.class).to(BukkitContainerLocationResolver.class).in(Singleton.class);
+
         Multibinder<Listener> listenerBinder = Multibinder.newSetBinder(binder(), Listener.class);
         listenerBinder.addBinding().to(ContainerCloseListener.class);
         listenerBinder.addBinding().to(HopperTransferListener.class);
@@ -64,30 +75,6 @@ public class KitsuneModule extends AbstractModule {
         listenerBinder.addBinding().to(ChestPlaceListener.class);
         listenerBinder.addBinding().to(PlayerQuitListener.class);
     }
-
-    // ===== Plugin =====
-
-    @Provides @Singleton
-    JavaPlugin providePlugin() {
-        return plugin;
-    }
-
-    @Provides @Singleton
-    Plugin providePluginAsPlugin(JavaPlugin plugin) {
-        return plugin;
-    }
-
-    @Provides @Singleton
-    Logger provideLogger(JavaPlugin plugin) {
-        return plugin.getLogger();
-    }
-
-    @Provides @Singleton
-    Path provideDataPath(JavaPlugin plugin) {
-        return plugin.getDataFolder().toPath();
-    }
-
-    // ===== Configuration =====
 
     @Provides @Singleton
     Configuration provideConfiguration(JavaPlugin plugin) {
@@ -116,8 +103,6 @@ public class KitsuneModule extends AbstractModule {
         return new KitsuneConfig(config);
     }
 
-    // ===== Platform =====
-
     @Provides @Singleton
     TagProviderRegistry provideTagProviderRegistry() {
         return TagProviderRegistry.INSTANCE;
@@ -129,8 +114,6 @@ public class KitsuneModule extends AbstractModule {
         Platform.set(platform);
         return platform;
     }
-
-    // ===== Storage =====
 
     @Provides @Singleton
     DataSource provideDataSource(Platform platform) {
@@ -144,13 +127,18 @@ public class KitsuneModule extends AbstractModule {
     }
 
     @Provides @Singleton
+    EmbeddingCache provideEmbeddingCache(DataSource dataSource, Logger logger) {
+        return new LayeredEmbeddingCache(dataSource, logger);
+    }
+
+    @Provides @Singleton
     ContainerStorage provideContainerStorage(DataSource dataSource, Logger logger) {
         return new ContainerStorage(dataSource, logger);
     }
 
     @Provides @Singleton
-    JVectorIndex provideJVectorIndex(Logger logger, Platform platform, EmbeddingService embeddingService) {
-        return new JVectorIndex(logger, platform.getDataFolder(), embeddingService.getDimension());
+    JVectorIndex provideJVectorIndex(Logger logger, Platform platform, EmbeddingServiceFactory factory) {
+        return new JVectorIndex(logger, platform.getDataFolder(), factory.getDimension());
     }
 
     @Provides @Singleton
@@ -158,31 +146,10 @@ public class KitsuneModule extends AbstractModule {
         return new KitsuneStorage(logger, containerStorage, vectorIndex);
     }
 
-    // ===== Embedding =====
-
     @Provides @Singleton
-    EmbeddingDimensionHolder provideEmbeddingDimensionHolder() {
-        return new EmbeddingDimensionHolder();
+    EmbeddingService provideEmbeddingService(EmbeddingServiceFactory factory) {
+        return factory.create();
     }
-
-    @Provides @Singleton
-    EmbeddingService provideEmbeddingService(
-            KitsuneConfig config,
-            Platform platform,
-            DataSource dataSource,
-            EmbeddingDimensionHolder dimensionHolder,
-            Logger logger) {
-        EmbeddingService service = EmbeddingServiceFactory.create(config, platform, dataSource);
-        dimensionHolder.setDimension(service.getDimension());
-        return service;
-    }
-
-    @Provides @Singleton @Named("embeddingDimension")
-    int provideDimension(EmbeddingDimensionHolder holder) {
-        return holder.getDimension();
-    }
-
-    // ===== Serialization =====
 
     @Provides @Singleton
     BukkitItemSerializer provideBukkitItemSerializer(TagProviderRegistry registry) {
@@ -190,8 +157,6 @@ public class KitsuneModule extends AbstractModule {
         TagProviders.registerDefaults(registry);
         return new BukkitItemSerializer(registry);
     }
-
-    // ===== Indexing =====
 
     @Provides @Singleton
     BukkitContainerIndexer provideBukkitContainerIndexer(
@@ -208,8 +173,6 @@ public class KitsuneModule extends AbstractModule {
         return impl;
     }
 
-    // ===== Protection =====
-
     @Provides @Singleton
     Optional<ProtectionProvider> provideProtectionProvider(
             KitsuneConfig config,
@@ -217,8 +180,6 @@ public class KitsuneModule extends AbstractModule {
             Logger logger) {
         return ProtectionProviderFactory.create(config, plugin, logger);
     }
-
-    // ===== History =====
 
     @Provides @Singleton @Named("searchHistoryExecutor")
     ExecutorService provideSearchHistoryExecutor() {
@@ -247,31 +208,18 @@ public class KitsuneModule extends AbstractModule {
         return new PlayerRadiusStorage(logger, storage.getDataSource(), executor, config.searchRadius());
     }
 
-    // ===== Cache =====
-
     @Provides @Singleton
     ItemDataCache provideItemDataCache() {
         return new ItemDataCache();
     }
-
-    // ===== Metadata =====
 
     @Provides @Singleton
     ProviderMetadata provideProviderMetadata(Logger logger, Platform platform) {
         return new ProviderMetadata(logger, platform.getDataFolder());
     }
 
-    // ===== Visualizer =====
-
     @Provides @Singleton
     ContainerItemDisplay provideContainerItemDisplay(Logger logger, KitsuneConfig config, JavaPlugin plugin) {
         return new ContainerItemDisplay(logger, config, plugin);
-    }
-
-    // ===== Utilities =====
-
-    @Provides
-    BukkitContainerLocationResolver provideContainerLocationResolver() {
-        return new BukkitContainerLocationResolver();
     }
 }

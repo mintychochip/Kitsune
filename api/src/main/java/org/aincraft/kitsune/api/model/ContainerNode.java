@@ -51,7 +51,6 @@ public class ContainerNode {
         this(containerType, color, customName, slotIndex, null, items);
     }
 
-    // Getters
     public String getContainerType() {
         return containerType;
     }
@@ -76,7 +75,6 @@ public class ContainerNode {
         return Collections.unmodifiableList(items);
     }
 
-    // Fluent builders
     public ContainerNode withChild(ContainerNode child) {
         List<ContainerNode> newChildren = new ArrayList<>(this.children);
         newChildren.add(child);
@@ -101,12 +99,10 @@ public class ContainerNode {
     }
 
     private void flattenWithPaths(List<ItemWithPath> result, List<ContainerNode> currentPath) {
-        // Add items at this level
         for (SerializedItem item : items) {
             result.add(new ItemWithPath(item, new ArrayList<>(currentPath)));
         }
 
-        // Recursively add items from children
         for (ContainerNode child : children) {
             List<ContainerNode> childPath = new ArrayList<>(currentPath);
             childPath.add(child);
