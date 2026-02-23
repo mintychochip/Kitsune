@@ -46,10 +46,6 @@ public final class KitsuneStorage {
         logger.info("KitsuneStorage initialized. Max ordinal: " + nextOrdinal.get());
     }
 
-    // TODO: PERF - Blocking joins defeat async design
-    // Current: Sequential DB saves + blocking .join() on each addVector + blocking rebuild
-    // Fix: Batch DB writes in single transaction, use addVectorsBatch(), defer rebuild
-    // Impact: With 100 chunks, this serializes 100 DB writes + 100 vector adds + full graph rebuild
     public CompletableFuture<Void> indexChunks(UUID containerId, List<ContainerChunk> chunks) {
         if (chunks == null || chunks.isEmpty()) {
             logger.info("No chunks to index for container " + containerId);
@@ -61,19 +57,18 @@ public final class KitsuneStorage {
         return CompletableFuture.runAsync(() -> {
             containerStorage.deleteChunksByContainer(containerId);
 
-            // TODO: PERF - Use saveChunksBatch() for single transaction instead of per-row INSERTs
+            List<CompletableFuture<Void>> addFutures = new ArrayList<>();
             for (ContainerChunk chunk : chunks) {
                 int ordinal = nextOrdinal.getAndIncrement();
                 UUID chunkId = UUID.randomUUID();
                 containerStorage.saveChunk(containerId, chunkId, ordinal, chunk);
-                // TODO: PERF - Remove .join() - collect futures and use CompletableFuture.allOf()
-                // Current blocks on each HashMap put (no actual index work happens here)
-                vectorIndex.addVector(ordinal, chunk.embedding()).join();
+                addFutures.add(vectorIndex.addVector(ordinal, chunk.embedding()));
             }
 
-            // TODO: PERF - Remove blocking rebuild from write path
-            // Instead: mark dirty, rebuild lazily before search or on background schedule
-            vectorIndex.rebuildIndex().join();
+            // Wait for all adds, then rebuild
+            CompletableFuture.allOf(addFutures.toArray(new CompletableFuture[0]))
+                .thenCompose(v -> vectorIndex.rebuildIndex())
+                .join();
         });
     }
 

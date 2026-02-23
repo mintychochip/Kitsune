@@ -2,7 +2,6 @@ package org.aincraft.kitsune.visualizer;
 
 import org.aincraft.kitsune.BukkitLocation;
 import org.aincraft.kitsune.config.KitsuneConfig;
-import org.aincraft.kitsune.config.KitsuneConfigInterface;
 import org.aincraft.kitsune.model.SearchResult;
 import org.bukkit.Location;
 import org.bukkit.World;
@@ -29,7 +28,7 @@ import java.util.logging.Logger;
  */
 public class ContainerItemDisplay {
     private final Logger logger;
-    private final KitsuneConfigInterface config;
+    private final KitsuneConfig config;
     private final JavaPlugin plugin;
 
     // Track displays per location key (world:x:y:z)
@@ -42,7 +41,7 @@ public class ContainerItemDisplay {
 
     public ContainerItemDisplay(Logger logger, KitsuneConfig config, JavaPlugin plugin) {
         this.logger = logger;
-        this.config = (KitsuneConfigInterface) config;
+        this.config = config;
         this.plugin = plugin;
     }
 
@@ -73,7 +72,7 @@ public class ContainerItemDisplay {
         // Clean up existing displays for THIS location only
         clearLocationDisplays(locKey);
 
-        int displayCount = ((KitsuneConfig) config).visualizer().itemDisplayCount();
+        int displayCount = config.visualizerDisplayCount();
         if (displayCount <= 0) {
             displayCount = 6;
         }
@@ -94,8 +93,8 @@ public class ContainerItemDisplay {
         Map<ItemDisplay, Double> initialAngles = new HashMap<>();
         Map<ItemDisplay, Integer> itemIndices = new HashMap<>();
 
-        double radius = ((KitsuneConfig) config).visualizer().displayRadius();
-        double heightOffset = ((KitsuneConfig) config).visualizer().displayHeight();
+        double radius = config.visualizerRadius();
+        double heightOffset = config.visualizerHeight();
 
         for (int i = 0; i < topItems.size(); i++) {
             double angle = (2 * Math.PI * i) / topItems.size(); // Spread evenly in circle
@@ -163,7 +162,7 @@ public class ContainerItemDisplay {
             // Schedule cleanup for this location
             plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
                 clearLocationDisplays(locKey);
-            }, ((KitsuneConfig) config).visualizer().displayDurationTicks());
+            }, config.visualizerDurationTicks());
         }
     }
 
@@ -367,9 +366,9 @@ public class ContainerItemDisplay {
                     return;
                 }
 
-                double spinSpeed = ((KitsuneConfig) config).visualizer().spinSpeed();
-                double radius = ((KitsuneConfig) config).visualizer().displayRadius();
-                double heightOffset = ((KitsuneConfig) config).visualizer().displayHeight();
+                double spinSpeed = config.visualizerSpinSpeed();
+                double radius = config.visualizerRadius();
+                double heightOffset = config.visualizerHeight();
                 int totalItems = displays.size();
 
                 for (ItemDisplay display : displays) {
@@ -426,7 +425,7 @@ public class ContainerItemDisplay {
                     }
 
                     // Apply spin
-                    if (((KitsuneConfig) config).visualizer().spinEnabled()) {
+                    if (config.visualizerSpinEnabled()) {
                         double spinAngle = Math.toRadians(spinSpeed * tick);
                         Transformation transformation = display.getTransformation();
 

@@ -8,32 +8,11 @@ import org.aincraft.kitsune.Location;
 import org.aincraft.kitsune.api.model.ContainerNode;
 import org.jetbrains.annotations.Nullable;
 
-/**
- * Platform-agnostic tree node data structure for organizing search results hierarchically.
- * Supports three node types: LOCATION (root), CONTAINER (intermediate), and ITEM (leaf).
- * This implementation has no platform-specific dependencies (no Bukkit, etc.).
- *
- * <p>Example hierarchy:
- * <pre>
- * LOCATION: "World: 100, 64, 200"
- *   ├─ ITEM: Diamond
- *   ├─ ITEM: Gold
- *   └─ CONTAINER: Red Shulker Box (slot 5)
- *       ├─ ITEM: Emerald
- *       └─ ITEM: Iron Ingot
- * </pre>
- */
 public final class SearchResultTreeNode {
 
-    /**
-     * Enum representing the type of node in the search result tree.
-     */
     public enum NodeType {
-        /** Root node representing a chest location (world + coords) */
         LOCATION,
-        /** Intermediate node for shulker boxes, bundles, or other containers */
         CONTAINER,
-        /** Leaf node for actual search result items */
         ITEM
     }
 
@@ -41,26 +20,12 @@ public final class SearchResultTreeNode {
     private final String displayName;
     private final List<SearchResultTreeNode> children;
 
-    // LOCATION-specific fields
-    @Nullable
-    private final Location location;
-    @Nullable
-    private final String containerType;  // Block type for root container (e.g., "CHEST", "BARREL")
+    @Nullable private final Location location;
+    @Nullable private final String containerType;
+    @Nullable private final ContainerNode containerRef;
+    @Nullable private final Integer containerScorePercent;
+    @Nullable private final ItemResultData itemData;
 
-    // CONTAINER-specific fields
-    @Nullable
-    private final ContainerNode containerRef;
-    @Nullable
-    private final Integer containerScorePercent;  // Score if container itself is a search result
-
-    // ITEM-specific fields
-    @Nullable
-    private final ItemResultData itemData;
-
-    /**
-     * Constructor for creating a node with all possible fields.
-     * Most fields will be null depending on the node type.
-     */
     private SearchResultTreeNode(
             NodeType type,
             String displayName,
@@ -78,21 +43,18 @@ public final class SearchResultTreeNode {
         this.containerScorePercent = containerScorePercent;
         this.itemData = itemData;
 
-        // Validate that required fields are present for each type
         switch (type) {
             case LOCATION:
                 Preconditions.checkArgument(location != null, "LOCATION node requires location");
                 Preconditions.checkArgument(
                         containerRef == null && containerScorePercent == null && itemData == null,
                         "LOCATION node must not have containerRef, score, or itemData");
-                // containerType is optional for LOCATION nodes
                 break;
             case CONTAINER:
                 Preconditions.checkArgument(containerRef != null, "CONTAINER node requires containerRef");
                 Preconditions.checkArgument(
                         location == null && containerType == null && itemData == null,
                         "CONTAINER node must not have location, containerType, or item data");
-                // containerScorePercent is optional for CONTAINER nodes
                 break;
             case ITEM:
                 Preconditions.checkArgument(itemData != null, "ITEM node requires itemData");
@@ -104,72 +66,50 @@ public final class SearchResultTreeNode {
         }
     }
 
-    /**
-     * Factory method to create a LOCATION node representing a chest location.
-     *
-     * @param location the platform-agnostic Location object
-     * @return a new LOCATION node
-     */
     public static SearchResultTreeNode locationNode(Location location) {
-        Preconditions.checkNotNull(location, "Location cannot be null");
-        String displayName = String.format("World: %s", location.asCoordinates());
-        return new SearchResultTreeNode(
-                NodeType.LOCATION,
-                displayName,
-                location,
-                null,
-                null,
-                null,
-                null);
+        return locationNode(location, null);
     }
 
-    /**
-     * Factory method to create a LOCATION node with a specific container type.
-     *
-     * @param location the platform-agnostic Location object
-     * @param containerType the block type (e.g., "CHEST", "BARREL", "TRAPPED_CHEST")
-     * @return a new LOCATION node with container type
-     */
     public static SearchResultTreeNode locationNode(Location location, @Nullable String containerType) {
         Preconditions.checkNotNull(location, "Location cannot be null");
-        String displayName = String.format("World: %s", location.asCoordinates());
         return new SearchResultTreeNode(
                 NodeType.LOCATION,
-                displayName,
+                String.format("World: %s", location.asCoordinates()),
                 location,
                 containerType,
-                null,
-                null,
-                null);
+                null, null, null);
     }
 
-    /**
-     * Formats a container node display string.
-     * Creates a string like "Red Shulker Box (slot 5)".
-     *
-     * @param node the container node to format
-     * @return formatted display string
-     */
+    public static SearchResultTreeNode containerNode(ContainerNode ref) {
+        Preconditions.checkNotNull(ref, "ContainerNode cannot be null");
+        return new SearchResultTreeNode(
+                NodeType.CONTAINER, formatContainerDisplay(ref), null, null, ref, null, null);
+    }
+
+    public static SearchResultTreeNode containerNodeWithScore(ContainerNode ref, int scorePercent) {
+        Preconditions.checkNotNull(ref, "ContainerNode cannot be null");
+        return new SearchResultTreeNode(
+                NodeType.CONTAINER, formatContainerDisplay(ref), null, null, ref, scorePercent, null);
+    }
+
+    public static SearchResultTreeNode itemNode(ItemResultData data) {
+        Preconditions.checkNotNull(data, "ItemResultData cannot be null");
+        return new SearchResultTreeNode(NodeType.ITEM, data.getDisplayName(), null, null, null, null, data);
+    }
+
     private static String formatContainerDisplay(ContainerNode node) {
         StringBuilder sb = new StringBuilder();
-
-        // Add color if present
         String color = node.getColor();
         if (color != null && !color.isEmpty()) {
             sb.append(capitalize(color)).append(" ");
         }
-
-        // Add container type or custom name
         String customName = node.getCustomName();
         if (customName != null && !customName.isEmpty()) {
             sb.append(customName);
         } else {
             sb.append(formatContainerType(node.getContainerType()));
         }
-
-        // Add slot info
         sb.append(" (slot ").append(node.getSlotIndex()).append(")");
-
         return sb.toString();
     }
 
@@ -187,179 +127,26 @@ public final class SearchResultTreeNode {
         };
     }
 
-    /**
-     * Factory method to create a CONTAINER node for nested containers.
-     *
-     * @param ref the container node
-     * @return a new CONTAINER node with display name from the reference
-     */
-    public static SearchResultTreeNode containerNode(ContainerNode ref) {
-        Preconditions.checkNotNull(ref, "ContainerNode cannot be null");
-        return new SearchResultTreeNode(
-                NodeType.CONTAINER,
-                formatContainerDisplay(ref),
-                null,
-                null,
-                ref,
-                null,
-                null);
-    }
+    public NodeType getType() { return type; }
+    public String getDisplayName() { return displayName; }
 
-    /**
-     * Factory method to create a CONTAINER node with a similarity score.
-     * Used when the container itself is a search result.
-     *
-     * @param ref the container node
-     * @param scorePercent the similarity score percentage
-     * @return a new CONTAINER node with score
-     */
-    public static SearchResultTreeNode containerNodeWithScore(ContainerNode ref, int scorePercent) {
-        Preconditions.checkNotNull(ref, "ContainerNode cannot be null");
-        return new SearchResultTreeNode(
-                NodeType.CONTAINER,
-                formatContainerDisplay(ref),
-                null,
-                null,
-                ref,
-                scorePercent,
-                null);
-    }
-
-    /**
-     * Factory method to create an ITEM node for search result items.
-     *
-     * @param data the item result data
-     * @return a new ITEM node with display name from the data
-     */
-    public static SearchResultTreeNode itemNode(ItemResultData data) {
-        Preconditions.checkNotNull(data, "ItemResultData cannot be null");
-        return new SearchResultTreeNode(
-                NodeType.ITEM,
-                data.getDisplayName(),
-                null,
-                null,
-                null,
-                null,
-                data);
-    }
-
-    /**
-     * Gets the type of this node.
-     *
-     * @return the NodeType
-     */
-    public NodeType getType() {
-        return type;
-    }
-
-    /**
-     * Gets the display name for this node.
-     *
-     * @return the display name
-     */
-    public String getDisplayName() {
-        return displayName;
-    }
-
-    /**
-     * Adds a child node to this node.
-     * No restrictions on node types are enforced at this level.
-     *
-     * @param child the child node to add
-     * @throws NullPointerException if child is null
-     */
     public void addChild(SearchResultTreeNode child) {
         Preconditions.checkNotNull(child, "Child node cannot be null");
         children.add(child);
     }
 
-    /**
-     * Gets the children of this node as an unmodifiable list.
-     *
-     * @return an unmodifiable list of children
-     */
-    public List<SearchResultTreeNode> getChildren() {
-        return Collections.unmodifiableList(children);
-    }
+    public List<SearchResultTreeNode> getChildren() { return Collections.unmodifiableList(children); }
 
-    /**
-     * Gets the world name if this is a LOCATION node.
-     * Derives the value from the location object.
-     *
-     * @return the world name, or null if this is not a LOCATION node
-     */
-    @Nullable
-    public String getWorld() {
-        return location != null ? location.getWorld().getName() : null;
-    }
-
-    /**
-     * Gets the coordinate string if this is a LOCATION node.
-     * Derives the value from the location object.
-     *
-     * @return the coordinate string, or null if this is not a LOCATION node
-     */
-    @Nullable
-    public String getCoords() {
-        return location != null ? location.asCoordinates() : null;
-    }
-
-    /**
-     * Gets the platform-agnostic Location if this is a LOCATION node.
-     *
-     * @return the Location, or null if this is not a LOCATION node
-     */
-    @Nullable
-    public Location getLocation() {
-        return location;
-    }
-
-    /**
-     * Gets the container type if this is a LOCATION node.
-     *
-     * @return the container type (e.g., "CHEST", "BARREL"), or null if not set or not a LOCATION node
-     */
-    @Nullable
-    public String getContainerType() {
-        return containerType;
-    }
-
-    /**
-     * Gets the container node if this is a CONTAINER node.
-     *
-     * @return the ContainerNode, or null if this is not a CONTAINER node
-     */
-    @Nullable
-    public ContainerNode getContainerRef() {
-        return containerRef;
-    }
-
-    /**
-     * Gets the similarity score percent if this is a CONTAINER node with a score.
-     *
-     * @return the score percentage (0-100), or null if no score
-     */
-    @Nullable
-    public Integer getContainerScorePercent() {
-        return containerScorePercent;
-    }
-
-    /**
-     * Gets the item result data if this is an ITEM node.
-     *
-     * @return the ItemResultData, or null if this is not an ITEM node
-     */
-    @Nullable
-    public ItemResultData getItemData() {
-        return itemData;
-    }
+    @Nullable public String getWorld() { return location != null ? location.getWorld().getName() : null; }
+    @Nullable public String getCoords() { return location != null ? location.asCoordinates() : null; }
+    @Nullable public Location getLocation() { return location; }
+    @Nullable public String getContainerType() { return containerType; }
+    @Nullable public ContainerNode getContainerRef() { return containerRef; }
+    @Nullable public Integer getContainerScorePercent() { return containerScorePercent; }
+    @Nullable public ItemResultData getItemData() { return itemData; }
 
     @Override
     public String toString() {
-        return "SearchResultTreeNode{" +
-                "type=" + type +
-                ", displayName='" + displayName + '\'' +
-                ", children=" + children.size() +
-                '}';
+        return "SearchResultTreeNode{type=" + type + ", displayName='" + displayName + "', children=" + children.size() + '}';
     }
 }

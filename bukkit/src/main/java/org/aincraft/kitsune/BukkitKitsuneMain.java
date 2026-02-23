@@ -16,7 +16,6 @@ import org.aincraft.kitsune.api.model.ContainerPath;
 import org.aincraft.kitsune.api.model.ContainerNode;
 import org.aincraft.kitsune.api.serialization.TagProviderRegistry;
 import org.aincraft.kitsune.model.SearchHistoryEntry;
-import org.aincraft.kitsune.config.KitsuneConfigInterface;
 import org.aincraft.kitsune.config.KitsuneConfig;
 import org.aincraft.kitsune.storage.SearchHistoryStorage;
 import org.aincraft.kitsune.embedding.CachedEmbeddingService;
@@ -63,19 +62,7 @@ import com.google.inject.Injector;
 import com.google.inject.Key;
 import com.google.inject.TypeLiteral;
 import jakarta.inject.Inject;
-import org.aincraft.kitsune.di.PluginModule;
-import org.aincraft.kitsune.di.ConfigModule;
-import org.aincraft.kitsune.di.PlatformModule;
-import org.aincraft.kitsune.di.SerializationModule;
-import org.aincraft.kitsune.di.CacheModule;
-import org.aincraft.kitsune.di.StorageModule;
-import org.aincraft.kitsune.di.EmbeddingModule;
-import org.aincraft.kitsune.di.IndexerModule;
-import org.aincraft.kitsune.di.ProtectionModule;
-import org.aincraft.kitsune.di.HistoryModule;
-import org.aincraft.kitsune.di.VisualizerModule;
-import org.aincraft.kitsune.di.ListenerModule;
-import org.aincraft.kitsune.di.MetadataModule;
+import org.aincraft.kitsune.di.KitsuneModule;
 import org.aincraft.kitsune.di.LifecycleService;
 import org.bukkit.event.Listener;
 import java.util.AbstractMap;
@@ -116,22 +103,8 @@ public final class BukkitKitsuneMain extends JavaPlugin {
     public void onEnable() {
         saveDefaultConfig();
 
-        // Create Guice injector with all modules
-        injector = Guice.createInjector(
-            new PluginModule(this),
-            new ConfigModule(),
-            new PlatformModule(),
-            new SerializationModule(),
-            new CacheModule(),
-            new StorageModule(),
-            new EmbeddingModule(),
-            new IndexerModule(),
-            new ProtectionModule(),
-            new HistoryModule(),
-            new VisualizerModule(),
-            new ListenerModule(),
-            new MetadataModule()
-        );
+        // Create Guice injector
+        injector = Guice.createInjector(new KitsuneModule(this));
 
         // Inject this instance
         injector.injectMembers(this);
@@ -175,12 +148,12 @@ public final class BukkitKitsuneMain extends JavaPlugin {
                             Commands.argument("radius", IntegerArgumentType.integer(1, 10000))
                                 .executes(context -> executeSearch(context.getSource(),
                                     StringArgumentType.getString(context, "query"),
-                                    kitsuneConfig.search().defaultLimit(),
+                                    kitsuneConfig.searchDefaultLimit(),
                                     IntegerArgumentType.getInteger(context, "radius")))
                         )
                         .executes(context -> executeSearch(context.getSource(),
                             StringArgumentType.getString(context, "query"),
-                            kitsuneConfig.search().defaultLimit(),
+                            kitsuneConfig.searchDefaultLimit(),
                             null))
                 )
                 .executes(context -> {
@@ -500,7 +473,7 @@ public final class BukkitKitsuneMain extends JavaPlugin {
             accessibleResults, getLogger(), itemLoader, itemDataCache);
 
         // Step 3: Render tree to components
-        List<Component> renderedLines = SearchResultTreeRenderer.RENDERER.render(treeRoots);
+        List<Component> renderedLines = SearchResultTreeRenderer.INSTANCE.render(treeRoots);
 
         // Step 4: Send header and all rendered lines to player
         source.getSender().sendMessage("§6Search Results:");
@@ -1225,7 +1198,7 @@ public final class BukkitKitsuneMain extends JavaPlugin {
     }
 
     // Keep getters for backward compatibility
-    public KitsuneConfigInterface getKitsuneConfig() {
+    public KitsuneConfig getKitsuneConfig() {
         return kitsuneConfig;
     }
     public KitsuneStorage getStorage() {

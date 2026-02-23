@@ -5,7 +5,6 @@ import java.util.UUID;
 import java.util.logging.Logger;
 import org.aincraft.kitsune.BukkitLocation;
 import org.aincraft.kitsune.config.KitsuneConfig;
-import org.aincraft.kitsune.config.KitsuneConfigInterface;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.block.Block;
@@ -32,12 +31,12 @@ public final class ProtectionProviderFactory {
    */
   public static Optional<ProtectionProvider> create(
       KitsuneConfig config, JavaPlugin plugin, Logger logger) {
-    if (!config.protection().enabled()) {
+    if (!config.protectionEnabled()) {
       logger.info("Protection integration disabled");
       return Optional.empty();
     }
 
-    String provider = config.protection().plugin().toLowerCase();
+    String provider = config.protectionPlugin().toLowerCase();
 
     if ("auto".equals(provider)) {
       if (plugin.getServer().getPluginManager().getPlugin("Lockette") != null) {

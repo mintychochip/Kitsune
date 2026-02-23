@@ -4,75 +4,145 @@ import org.aincraft.kitsune.api.ContainerLocations;
 import org.aincraft.kitsune.BukkitLocation;
 import org.aincraft.kitsune.Location;
 import org.aincraft.kitsune.api.indexing.SerializedItem;
-import org.aincraft.kitsune.config.KitsuneConfigInterface;
+import org.aincraft.kitsune.api.model.ContainerPath;
+import org.aincraft.kitsune.config.KitsuneConfig;
 import org.aincraft.kitsune.embedding.EmbeddingService;
-import java.util.logging.Logger;
+import org.aincraft.kitsune.model.ContainerChunk;
 import org.aincraft.kitsune.serialization.BukkitItemSerializer;
 import org.aincraft.kitsune.storage.KitsuneStorage;
+import org.aincraft.kitsune.util.ItemDataExtractor;
 import org.bukkit.block.Container;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
- * Bukkit-specific container indexer that extends the core ContainerIndexer.
- * Provides platform-specific methods for Bukkit Location handling and radius scanning.
+ * Bukkit container indexer implementing ContainerIndexer interface.
+ * Provides all indexing logic plus Bukkit-specific methods.
  */
-public class BukkitContainerIndexer extends ContainerIndexer {
-    private final ScheduledExecutorService executor = Executors.newScheduledThreadPool(2);
+public class BukkitContainerIndexer implements ContainerIndexer {
+    private final Logger logger;
+    private final EmbeddingService embeddingService;
+    private final KitsuneStorage storage;
+    private final KitsuneConfig config;
     private final BukkitItemSerializer itemSerializer;
+    private final ScheduledExecutorService executor = Executors.newScheduledThreadPool(2);
+    private final Map<Location, ScheduledFuture<?>> pendingIndexes = new HashMap<>();
+    private final int debounceDelayMs;
 
     public BukkitContainerIndexer(Logger logger, EmbeddingService embeddingService,
-                                   KitsuneStorage storage, KitsuneConfigInterface config,
-                                   BukkitItemSerializer itemSerializer) {
-        super(logger, embeddingService, storage, config);
+                                  KitsuneStorage storage, KitsuneConfig config,
+                                  BukkitItemSerializer itemSerializer) {
+        this.logger = logger;
+        this.embeddingService = embeddingService;
+        this.storage = storage;
+        this.config = config;
         this.itemSerializer = itemSerializer;
+        this.debounceDelayMs = config.indexingDebounceMs();
     }
 
-    /**
-     * Bukkit-specific wrapper for scheduling index by ContainerLocations.
-     * Properly handles multi-block containers like double chests.
-     *
-     * @param locations the container locations (supports multi-block)
-     * @param items the Bukkit items to index
-     */
+    @Override
+    public void scheduleIndex(ContainerLocations locations, List<SerializedItem> serializedItems) {
+        Location primaryLocation = locations.primaryLocation();
+
+        storage.getOrCreateContainer(locations).thenAccept(containerId -> {
+            synchronized (pendingIndexes) {
+                ScheduledFuture<?> existing = pendingIndexes.get(primaryLocation);
+                if (existing != null && !existing.isDone()) {
+                    existing.cancel(false);
+                }
+
+                ScheduledFuture<?> future = executor.schedule(
+                    () -> performIndex(containerId, serializedItems),
+                    debounceDelayMs,
+                    TimeUnit.MILLISECONDS
+                );
+
+                pendingIndexes.put(primaryLocation, future);
+            }
+        }).exceptionally(ex -> {
+            logger.log(Level.WARNING,
+                "Failed to get or create container at " + primaryLocation, ex);
+            return null;
+        });
+    }
+
+    private void performIndex(UUID containerId, List<SerializedItem> serializedItems) {
+        synchronized (pendingIndexes) {
+            pendingIndexes.values().removeIf(ScheduledFuture::isDone);
+        }
+
+        if (serializedItems.isEmpty()) {
+            storage.deleteContainer(containerId).exceptionally(ex -> {
+                logger.log(Level.WARNING, "Failed to delete empty container", ex);
+                return null;
+            });
+            return;
+        }
+
+        long timestamp = System.currentTimeMillis();
+        List<String> embeddingTexts = new ArrayList<>();
+        List<ContainerPath> containerPaths = new ArrayList<>();
+
+        for (SerializedItem serialized : serializedItems) {
+            embeddingTexts.add(serialized.embeddingText().toLowerCase());
+            containerPaths.add(ItemDataExtractor.extractContainerPath(serialized.storageJson(), logger));
+        }
+
+        CompletableFuture<List<float[]>> embeddingFuture = embeddingService.embedBatch(embeddingTexts, "RETRIEVAL_DOCUMENT");
+
+        CompletableFuture<List<ContainerChunk>> chunkFuture = embeddingFuture.thenApply(embeddings -> {
+            List<ContainerChunk> chunks = new ArrayList<>();
+            for (int i = 0; i < embeddings.size(); i++) {
+                SerializedItem serialized = serializedItems.get(i);
+                ContainerChunk chunk = new ContainerChunk(
+                    containerId,
+                    i,
+                    serialized.storageJson(),
+                    embeddings.get(i),
+                    timestamp,
+                    containerPaths.get(i)
+                );
+                chunks.add(chunk);
+            }
+            return chunks;
+        });
+
+        chunkFuture.thenCompose(chunks -> storage.indexChunks(containerId, chunks))
+            .exceptionally(ex -> {
+                logger.log(Level.WARNING, "Failed to index container " + containerId, ex);
+                return null;
+            });
+    }
+
+    // ===== Bukkit-specific methods =====
+
     public void scheduleIndex(ContainerLocations locations, ItemStack[] items) {
         List<SerializedItem> serializedItems = itemSerializer.serialize(items);
         scheduleIndex(locations, serializedItems);
     }
 
-    /**
-     * Bukkit-specific wrapper for scheduling index by single Location.
-     * For single-block containers only. Use scheduleIndex(ContainerLocations, ItemStack[])
-     * for multi-block containers like double chests.
-     *
-     * @param location the Bukkit location
-     * @param items the Bukkit items to index
-     */
     public void scheduleIndex(org.bukkit.Location location, ItemStack[] items) {
         if (location.getWorld() == null) {
             return;
         }
-
         Location locationData = BukkitLocation.from(location);
         List<SerializedItem> serializedItems = itemSerializer.serialize(items);
         scheduleIndex(ContainerLocations.single(locationData), serializedItems);
     }
 
-    /**
-     * Performs radius-based reindexing of containers around a center location.
-     * Uses R-tree spatial index for O(log n) lookup instead of O(n^3) block iteration.
-     *
-     * @param center the center location
-     * @param radius the scan radius
-     * @return CompletableFuture with count of reindexed containers
-     */
     public CompletableFuture<Integer> reindexRadius(org.bukkit.Location center, int radius) {
         if (center.getWorld() == null) {
             return CompletableFuture.completedFuture(0);
@@ -83,24 +153,20 @@ public class BukkitContainerIndexer extends ContainerIndexer {
         int y = center.getBlockY();
         int z = center.getBlockZ();
 
-        // Use R-tree spatial index to find containers
         return storage.getContainersInRadius(worldName, x, y, z, radius)
             .thenCompose(containerIds -> {
                 if (containerIds.isEmpty()) {
                     return CompletableFuture.completedFuture(0);
                 }
 
-                // For each container, get its location and reindex
                 List<CompletableFuture<?>> tasks = new ArrayList<>();
 
-                for (java.util.UUID containerId : containerIds) {
+                for (UUID containerId : containerIds) {
                     CompletableFuture<?> task = storage.getPrimaryLocationForContainer(containerId)
                         .thenAccept(locOpt -> {
                             locOpt.ifPresent(loc -> {
-                                // Must get block on main thread
                                 org.bukkit.Location bukkitLoc = BukkitLocation.toBukkit(loc);
                                 if (bukkitLoc != null && bukkitLoc.getWorld() != null) {
-                                    // Verify still in radius (R-tree uses bounding box, need exact check)
                                     if (center.distance(bukkitLoc) <= radius) {
                                         var block = bukkitLoc.getBlock();
                                         if (block.getState() instanceof Container container) {
@@ -119,36 +185,16 @@ public class BukkitContainerIndexer extends ContainerIndexer {
             });
     }
 
-    /**
-     * Schedules indexing and tracks the completion with a CompletableFuture.
-     *
-     * @param location the Bukkit location
-     * @param items the items to index
-     * @param taskList the list to add the completion future to
-     */
-    private void scheduleIndexAndTrack(org.bukkit.Location location, ItemStack[] items, List<CompletableFuture<?>> taskList) {
-        if (location.getWorld() == null) {
-            return;
-        }
-
-        Location locationData = BukkitLocation.from(location);
-        List<SerializedItem> serializedItems = itemSerializer.serialize(items);
-
-        // Create a future that we'll complete when indexing is done
-        CompletableFuture<Void> completionFuture = new CompletableFuture<>();
-        taskList.add(completionFuture);
-
-        // Get the container and schedule the index
-        // Complete the future after scheduleIndex completes
-        scheduleIndex(ContainerLocations.single(locationData), serializedItems);
-
-        // Note: Due to async nature of getOrCreateContainer in scheduleIndex,
-        // we mark it as complete immediately to avoid deadlock
-        completionFuture.complete(null);
-    }
-
     @Override
     public void shutdown() {
+        synchronized (pendingIndexes) {
+            for (ScheduledFuture<?> future : pendingIndexes.values()) {
+                if (future != null && !future.isDone()) {
+                    future.cancel(false);
+                }
+            }
+            pendingIndexes.clear();
+        }
         executor.shutdown();
         try {
             if (!executor.awaitTermination(10, TimeUnit.SECONDS)) {
@@ -157,6 +203,5 @@ public class BukkitContainerIndexer extends ContainerIndexer {
         } catch (InterruptedException e) {
             executor.shutdownNow();
         }
-        super.shutdown();
     }
 }

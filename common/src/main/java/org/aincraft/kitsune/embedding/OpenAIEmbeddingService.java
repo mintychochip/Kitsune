@@ -13,16 +13,16 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.logging.Level;
 import org.aincraft.kitsune.Platform;
-import org.aincraft.kitsune.config.KitsuneConfigInterface;
+import org.aincraft.kitsune.config.KitsuneConfig;
 
 public final class OpenAIEmbeddingService implements EmbeddingService {
     private final Platform platform;
-    private final KitsuneConfigInterface config;
+    private final KitsuneConfig config;
     private final HttpClient httpClient;
     private final Gson gson = new Gson();
     private static final String OPENAI_API_URL = "https://api.openai.com/v1/embeddings";
 
-    public OpenAIEmbeddingService(Platform platform, KitsuneConfigInterface config) {
+    public OpenAIEmbeddingService(Platform platform, KitsuneConfig config) {
         this.platform = platform;
         this.config = config;
         this.httpClient = HttpClient.newHttpClient();

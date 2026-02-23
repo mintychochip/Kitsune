@@ -6,7 +6,6 @@ import com.google.inject.name.Named;
 import org.aincraft.kitsune.api.KitsuneService;
 import org.aincraft.kitsune.cache.ItemDataCache;
 import org.aincraft.kitsune.config.KitsuneConfig;
-import org.aincraft.kitsune.config.KitsuneConfigInterface;
 import org.aincraft.kitsune.embedding.EmbeddingService;
 import org.aincraft.kitsune.indexing.BukkitContainerIndexer;
 import org.aincraft.kitsune.storage.KitsuneStorage;
@@ -28,7 +27,7 @@ public class LifecycleService {
     private final SearchHistoryStorage searchHistoryStorage;
     private final PlayerRadiusStorage playerRadiusStorage;
     private final ProviderMetadata providerMetadata;
-    private final KitsuneConfigInterface config;
+    private final KitsuneConfig config;
     private final EmbeddingDimensionHolder dimensionHolder;
     private final Optional<BukkitContainerIndexer> containerIndexer;
     private final ContainerItemDisplay itemDisplayVisualizer;

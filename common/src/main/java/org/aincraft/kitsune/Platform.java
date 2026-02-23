@@ -3,7 +3,6 @@ package org.aincraft.kitsune;
 import java.nio.file.Path;
 import java.util.logging.Logger;
 import org.aincraft.kitsune.api.serialization.TagProviderRegistry;
-import org.aincraft.kitsune.config.ConfigurationFactory;
 
 public interface Platform {
 
@@ -30,8 +29,6 @@ public interface Platform {
   Logger getLogger();
 
   Path getDataFolder();
-
-  ConfigurationFactory getConfig();
 
   TagProviderRegistry getTagProviderRegistry();
 

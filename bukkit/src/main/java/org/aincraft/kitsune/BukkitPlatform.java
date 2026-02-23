@@ -2,7 +2,6 @@ package org.aincraft.kitsune;
 
 import com.google.common.base.Preconditions;
 import org.aincraft.kitsune.api.serialization.TagProviderRegistry;
-import org.aincraft.kitsune.config.ConfigurationFactory;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -16,13 +15,10 @@ import java.util.logging.Logger;
 public final class BukkitPlatform implements Platform {
 
   private final JavaPlugin plugin;
-  private final ConfigurationFactory configFactory;
   private final TagProviderRegistry tagProviderRegistry;
 
-  public BukkitPlatform(JavaPlugin plugin, ConfigurationFactory configFactory,
-      TagProviderRegistry tagProviderRegistry) {
+  public BukkitPlatform(JavaPlugin plugin, TagProviderRegistry tagProviderRegistry) {
     this.plugin = plugin;
-    this.configFactory = configFactory;
     this.tagProviderRegistry = tagProviderRegistry;
   }
 
@@ -34,11 +30,6 @@ public final class BukkitPlatform implements Platform {
   @Override
   public Path getDataFolder() {
     return plugin.getDataFolder().toPath();
-  }
-
-  @Override
-  public ConfigurationFactory getConfig() {
-    return configFactory;
   }
 
   @Override
