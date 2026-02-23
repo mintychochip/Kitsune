@@ -2,6 +2,7 @@ package org.aincraft.kitsune.cache;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -73,13 +74,23 @@ public class ItemDataCache {
 
   /**
    * Extract item data from JSON content.
+   * Supports both JsonObject and JsonArray (with single element) formats.
    */
   private ExtractedItemData extractItemData(String jsonContent, Logger logger) {
     try {
-      JsonArray jsonArray = GSON.fromJson(jsonContent, JsonArray.class);
-      if (jsonArray != null && jsonArray.size() > 0) {
-        JsonObject itemObj = jsonArray.get(0).getAsJsonObject();
+      JsonElement elem = GSON.fromJson(jsonContent, JsonElement.class);
+      JsonObject itemObj = null;
 
+      if (elem.isJsonArray()) {
+        JsonArray jsonArray = elem.getAsJsonArray();
+        if (jsonArray.size() > 0) {
+          itemObj = jsonArray.get(0).getAsJsonObject();
+        }
+      } else if (elem.isJsonObject()) {
+        itemObj = elem.getAsJsonObject();
+      }
+
+      if (itemObj != null) {
         // Extract display name
         String displayName = extractDisplayName(itemObj);
 

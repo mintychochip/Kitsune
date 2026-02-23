@@ -2,6 +2,7 @@ package org.aincraft.kitsune.util;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import java.util.ArrayList;
 import java.util.List;
@@ -15,16 +16,30 @@ public final class ItemDataExtractor {
 
     private ItemDataExtractor() {}
 
+    /**
+     * Parse JSON content and extract the first item object.
+     * Supports both JsonObject and JsonArray formats.
+     */
+    @Nullable
+    private static JsonObject parseItemObject(String jsonContent) {
+        if (jsonContent == null || jsonContent.isEmpty()) return null;
+        JsonElement elem = GSON.fromJson(jsonContent, JsonElement.class);
+        if (elem == null) return null;
+        if (elem.isJsonObject()) return elem.getAsJsonObject();
+        if (elem.isJsonArray()) {
+            JsonArray arr = elem.getAsJsonArray();
+            if (arr.size() > 0 && arr.get(0).isJsonObject()) {
+                return arr.get(0).getAsJsonObject();
+            }
+        }
+        return null;
+    }
+
     @Nullable
     public static String extractDisplayName(String jsonContent, @Nullable Logger logger) {
-        if (jsonContent == null || jsonContent.isEmpty()) {
-            return "Unknown Item";
-        }
         try {
-            JsonArray jsonArray = GSON.fromJson(jsonContent, JsonArray.class);
-            if (jsonArray != null && jsonArray.size() > 0) {
-                JsonObject itemObj = jsonArray.get(0).getAsJsonObject();
-
+            JsonObject itemObj = parseItemObject(jsonContent);
+            if (itemObj != null) {
                 if (itemObj.has("display_name")) {
                     String displayName = itemObj.get("display_name").getAsString();
                     if (displayName != null && !displayName.isEmpty()) {
@@ -50,14 +65,10 @@ public final class ItemDataExtractor {
     }
 
     public static int extractSlotIndex(String jsonContent, @Nullable Logger logger) {
-        if (jsonContent == null || jsonContent.isEmpty()) return -1;
         try {
-            JsonArray jsonArray = GSON.fromJson(jsonContent, JsonArray.class);
-            if (jsonArray != null && jsonArray.size() > 0) {
-                JsonObject itemObj = jsonArray.get(0).getAsJsonObject();
-                if (itemObj.has("slot")) {
-                    return itemObj.get("slot").getAsInt();
-                }
+            JsonObject itemObj = parseItemObject(jsonContent);
+            if (itemObj != null && itemObj.has("slot")) {
+                return itemObj.get("slot").getAsInt();
             }
         } catch (Exception e) {
             logWarning(logger, "extractSlotIndex: " + e.getMessage());
@@ -66,15 +77,11 @@ public final class ItemDataExtractor {
     }
 
     public static int extractAmount(String jsonContent, @Nullable Logger logger) {
-        if (jsonContent == null || jsonContent.isEmpty()) return 1;
         try {
-            JsonArray jsonArray = GSON.fromJson(jsonContent, JsonArray.class);
-            if (jsonArray != null && jsonArray.size() > 0) {
-                JsonObject itemObj = jsonArray.get(0).getAsJsonObject();
-                if (itemObj.has("amount")) {
-                    int amount = itemObj.get("amount").getAsInt();
-                    return amount > 0 ? amount : 1;
-                }
+            JsonObject itemObj = parseItemObject(jsonContent);
+            if (itemObj != null && itemObj.has("amount")) {
+                int amount = itemObj.get("amount").getAsInt();
+                return amount > 0 ? amount : 1;
             }
         } catch (Exception e) {
             logWarning(logger, "extractAmount: " + e.getMessage());
@@ -83,20 +90,16 @@ public final class ItemDataExtractor {
     }
 
     public static ContainerPath extractContainerPath(String jsonContent, @Nullable Logger logger) {
-        if (jsonContent == null || jsonContent.isEmpty()) return ContainerPath.ROOT;
         try {
-            JsonArray jsonArray = GSON.fromJson(jsonContent, JsonArray.class);
-            if (jsonArray != null && jsonArray.size() > 0) {
-                JsonObject itemObj = jsonArray.get(0).getAsJsonObject();
-                if (itemObj.has("container_path")) {
-                    var pathElement = itemObj.get("container_path");
-                    if (pathElement.isJsonPrimitive() && pathElement.getAsJsonPrimitive().isString()) {
-                        String pathString = pathElement.getAsString();
-                        if (pathString.isEmpty()) return ContainerPath.ROOT;
-                        return parseLegacyContainerPath(pathString);
-                    }
-                    return ContainerPath.fromJson(pathElement.toString());
+            JsonObject itemObj = parseItemObject(jsonContent);
+            if (itemObj != null && itemObj.has("container_path")) {
+                var pathElement = itemObj.get("container_path");
+                if (pathElement.isJsonPrimitive() && pathElement.getAsJsonPrimitive().isString()) {
+                    String pathString = pathElement.getAsString();
+                    if (pathString.isEmpty()) return ContainerPath.ROOT;
+                    return parseLegacyContainerPath(pathString);
                 }
+                return ContainerPath.fromJson(pathElement.toString());
             }
         } catch (Exception e) {
             logWarning(logger, "extractContainerPath: " + e.getMessage());
