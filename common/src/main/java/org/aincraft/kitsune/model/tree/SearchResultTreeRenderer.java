@@ -14,6 +14,36 @@ import org.aincraft.kitsune.api.model.ContainerNode;
 
 public final class SearchResultTreeRenderer {
 
+  private enum FormatTemplate {
+    LOCATION_HEADER("<gold><name></gold><dark_gray> [<yellow><bold><coords></bold></yellow>]</dark_gray>"),
+    CONTAINER_LINE("<white><connector></white><aqua><name></aqua><dark_gray> [<count> items]</dark_gray>"),
+    ITEM_LINE("<white><connector></white><dark_gray>x<amount> </dark_gray><name><yellow> (<score>%)</yellow>"),
+    ITEM_HOVER("<white><name></white>\n<gray>Match: </gray><yellow><score>%</yellow>\n<gray>Slot: </gray><yellow><slot></yellow><path>"),
+    PATH_LINE("\n<gray>Path: </gray><yellow><path></yellow>");
+
+    private final String format;
+
+    FormatTemplate(String format) {
+      this.format = format;
+    }
+
+    public Component render(TagResolver... tagResolvers) {
+      return MINI.deserialize(format, tagResolvers);
+    }
+
+    public Component renderWithTextTag(String key, Object value) {
+      return render(textTag(key, value));
+    }
+
+    public Component renderWithTextTags(Object... keyValuePairs) {
+      TagResolver[] resolvers = new TagResolver[keyValuePairs.length / 2];
+      for (int i = 0; i < keyValuePairs.length; i += 2) {
+        resolvers[i / 2] = textTag(String.valueOf(keyValuePairs[i]), keyValuePairs[i + 1]);
+      }
+      return render(resolvers);
+    }
+  }
+  
   private static final String BRANCH = "├─ ";
   private static final String LAST_BRANCH = "└─ ";
   private static final String VERTICAL = "│  ";
@@ -45,10 +75,9 @@ public final class SearchResultTreeRenderer {
             ? Util.fromMaterialToTitleCase(containerType)
             : "Container";
 
-        lines.add(MINI.deserialize(
-            "<gold><name></gold><dark_gray> [<yellow><bold><coords></bold></yellow>]</dark_gray>",
-            textTag("name", containerName),
-            textTag("coords", coords != null ? coords : "?")));
+        lines.add(FormatTemplate.LOCATION_HEADER.renderWithTextTags(
+            "name", containerName,
+            "coords", coords != null ? coords : "?"));
 
         List<SearchResultTreeNode> children = root.getChildren();
         for (int j = 0; j < children.size(); j++) {
@@ -90,8 +119,7 @@ public final class SearchResultTreeRenderer {
     String containerName = formatContainerNameWithoutSlot(ref);
     int itemCount = countItems(node);
 
-    return MINI.deserialize(
-            "<white><connector></white><aqua><name></aqua><dark_gray> [<count> items]</dark_gray>",
+    return FormatTemplate.CONTAINER_LINE.render(
             textTag("connector", connector),
             textTag("name", containerName),
             textTag("count", itemCount))
@@ -105,8 +133,7 @@ public final class SearchResultTreeRenderer {
       return Component.text(connector + node.getDisplayName(), NamedTextColor.WHITE);
     }
 
-    return MINI.deserialize(
-            "<white><connector></white><dark_gray>x<amount> </dark_gray><name><yellow> (<score>%)</yellow>",
+    return FormatTemplate.ITEM_LINE.render(
             textTag("connector", connector),
             textTag("amount", itemData.getAmount()),
             textTag("name", itemData.getDisplayName()),
@@ -119,8 +146,7 @@ public final class SearchResultTreeRenderer {
       return itemData.getItemContext().asHoverEvent();
     }
 
-    Component hoverText = MINI.deserialize(
-        "<white><name></white>\n<gray>Match: </gray><yellow><score>%</yellow>\n<gray>Slot: </gray><yellow><slot></yellow><path>",
+    Component hoverText = FormatTemplate.ITEM_HOVER.render(
         textTag("name", itemData.getDisplayName()),
         textTag("score", itemData.getScorePercent()),
         textTag("slot", itemData.getSlotIndex()),
@@ -134,7 +160,7 @@ public final class SearchResultTreeRenderer {
     if (containerPath == null || containerPath.isRoot()) {
       return Component.text("\nLocation: Chest", NamedTextColor.GRAY);
     }
-    return MINI.deserialize("\n<gray>Path: </gray><yellow><path></yellow>",
+    return FormatTemplate.PATH_LINE.render(
         textTag("path", buildPathDisplay(containerPath)));
   }
 

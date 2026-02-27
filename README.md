@@ -1,26 +1,23 @@
-# Kitsune - Semantic Search
+# Kitsune - Semantic Item Search
 
-Find all your lost items
-
-## Showcase
-
-<p align="center">
-  <img src="docs/images/search-diamond.png" alt="Diamond search" width="280">
-  <img src="docs/images/search-red.png" alt="Red items search" width="280">
-  <img src="docs/images/search-nether.png" alt="Nether items search" width="280">
-</p>
+Find all your lost items with a single command using AI-powered semantic search.
 
 ## Requirements
 
-- Paper 1.21+
-- Java 21+
+- **Paper** 1.21+
+- **Java** 21+
 
 ## Installation
 
-1. Download latest release
-2. Place in `plugins/` folder
-3. Start server - model auto-downloads on first run
-4. Configure `plugins/ChestFind/config.yml` as needed
+1. Download the latest `.jar` from [Releases](https://github.com/your-repo/Chestfind/releases)
+2. Place the jar in your server's `plugins/` folder
+3. Start the server
+4. On first run, the embedding model auto-downloads (~50MB)
+5. (Optional) Configure settings in `plugins/ChestFind/config.yml`
+
+## Developer API
+
+Coming soon!
 
 ## Usage
 
