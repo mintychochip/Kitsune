@@ -31,19 +31,4 @@ public record SearchResult(
         // fullContent can be null for backwards compatibility
         // containerPath can be null for backwards compatibility
     }
-
-    // Backwards compatible constructor without containerPath
-    public SearchResult(Location location, List<Location> allLocations, double score, String preview, String fullContent) {
-        this(location, allLocations, score, preview, fullContent, null);
-    }
-
-    // Backwards compatible constructor without allLocations or containerPath
-    public SearchResult(Location location, double score, String preview, String fullContent) {
-        this(location, List.of(location), score, preview, fullContent, null);
-    }
-
-    // Backwards compatible constructor with preview only
-    public SearchResult(Location location, double score, String preview) {
-        this(location, List.of(location), score, preview, preview, null);
-    }
 }

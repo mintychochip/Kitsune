@@ -14,15 +14,6 @@ public record SearchHistoryEntry(
     int resultCount,
     long timestamp
 ) {
-    public SearchHistoryEntry {
-        Preconditions.checkNotNull(id, "ID cannot be null");
-        Preconditions.checkNotNull(playerId, "Player ID cannot be null");
-        Preconditions.checkNotNull(playerName, "Player name cannot be null");
-        Preconditions.checkNotNull(query, "Query cannot be null");
-        Preconditions.checkArgument(resultCount >= 0, "Result count must be non-negative");
-        Preconditions.checkArgument(timestamp > 0, "Timestamp must be positive");
-    }
-
     /**
      * Creates a new SearchHistoryEntry with a random UUID and current timestamp.
      *
@@ -33,6 +24,10 @@ public record SearchHistoryEntry(
      * @return a new SearchHistoryEntry
      */
     public static SearchHistoryEntry of(UUID playerId, String playerName, String query, int resultCount) {
+        Preconditions.checkNotNull(playerId, "Player ID cannot be null");
+        Preconditions.checkNotNull(playerName, "Player name cannot be null");
+        Preconditions.checkNotNull(query, "Query cannot be null");
+        Preconditions.checkArgument(resultCount >= 0, "Result count must be non-negative");
         return new SearchHistoryEntry(
             UUID.randomUUID(),
             playerId,

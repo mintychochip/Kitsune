@@ -25,17 +25,4 @@ public record ContainerChunk(
         Preconditions.checkNotNull(embedding, "Embedding cannot be null");
         Preconditions.checkArgument(chunkIndex >= 0, "Chunk index must be non-negative");
     }
-
-    /**
-     * Constructor for backward compatibility without containerPath.
-     */
-    public ContainerChunk(
-        UUID containerId,
-        int chunkIndex,
-        String contentText,
-        float[] embedding,
-        long timestamp
-    ) {
-        this(containerId, chunkIndex, contentText, embedding, timestamp, null);
-    }
 }
