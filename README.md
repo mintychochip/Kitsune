@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <strong>🦊 AI-Powered Semantic Item Search for Minecraft</strong>
+  <strong>AI-Powered Semantic Item Search for Minecraft</strong>
 </p>
 
 <p align="center">
@@ -17,18 +17,18 @@
 
 ---
 
-## ✨ Features
+## Features
 
-- **🧠 Semantic Search** — AI understands item descriptions and categories
-- **🔍 Natural Language** — Search with phrases like "building blocks" or "shiny things"
-- **📦 Container Indexing** — Automatically indexes chests, barrels, shulker boxes
-- **⚡ Real-Time Results** — Instant search across all loaded containers
-- **🎮 Simple Commands** — Single `/find` command with intuitive syntax
-- **🔧 Auto-Download** — AI model downloads automatically on first run (~50MB)
+- **Semantic Search** — AI understands item descriptions and categories
+- **Natural Language** — Search with phrases like "building blocks" or "shiny things"
+- **Container Indexing** — Automatically indexes chests, barrels, shulker boxes
+- **Real-Time Results** — Instant search across all loaded containers
+- **Simple Commands** — Single `/find` command with intuitive syntax
+- **Auto-Download** — AI model downloads automatically on first run (~50MB)
 
 ---
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 | Component | Technology |
 |-----------|------------|
@@ -40,7 +40,7 @@
 
 ---
 
-## 🚀 Installation
+## Installation
 
 ### Requirements
 
@@ -67,7 +67,7 @@ vim config.yml
 
 ---
 
-## 🎮 Usage
+## Usage
 
 ### Commands
 
@@ -119,7 +119,7 @@ vim config.yml
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 Kitsune/
@@ -139,7 +139,7 @@ Kitsune/
 
 ---
 
-## 🔧 Configuration
+## Configuration
 
 ```yaml
 # plugins/Kitsune/config.yml
@@ -159,7 +159,7 @@ model:
 
 ---
 
-## 🔌 Developer API
+## Developer API
 
 ```java
 // Get API instance
@@ -177,7 +177,7 @@ api.indexContainer(container);
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
 1. Fork the repository
 2. Create a feature branch
@@ -187,12 +187,12 @@ api.indexContainer(container);
 
 ---
 
-## 📄 License
+## License
 
 [MIT License](LICENSE)
 
 ---
 
 <p align="center">
-  Find anything, just by describing it 🦊
+  Find anything, just by describing it
 </p>
